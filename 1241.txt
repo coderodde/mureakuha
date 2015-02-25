@@ -1,0 +1,892 @@
+package com.mureakuha.util;
+
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Random;
+
+/**
+ * This class holds the static methods comprising a sorting algorithm called
+ * 'adaptive mergesort' as specified in the article Sublinear Merging and
+ * Natural Mergesort by Svante Carlsson, Christos Levcopoulos and Ola Petersson
+ * (Algoritmica, June 1993, Volume 9, Issue 6).
+ */
+public class SortingAlgorithms {
+        
+    /**
+     * This class represents a sorted contiguous sequence (a block) within a
+     * run.
+     */
+    static class Interval {
+        int from;
+        int to;
+        Interval prev;
+        Interval next;
+        
+        Interval( int from, int to ){
+            this.from = from;
+            this.to = to;
+        }
+    }
+    
+    /**
+     * This class represents a run as a linked list of blocks.
+     */
+    static class Run {
+        Interval first;
+        Interval last;
+        
+        Run( int from, int to ){
+            first = new Interval( from, to );
+            last = first;
+        }
+        
+        Run(){}
+    }
+    
+    /**
+     * This class represents a run queue established and maintained by 
+     * the top-level sorting algorithm.
+     */
+    static class Queue {
+        
+        private static class Node {
+            Node next;
+            Run run;
+            
+            Node( Node next, Run run ){
+                this.next = next;
+                this.run = run;
+            }
+        }
+
+        private Node head;  
+        private Node tail;  
+        private int n;      
+
+        Queue(){
+            head = null;
+            tail = null;
+            n = 0;
+        }
+
+        /**
+         * Gets the size of this queue.
+         * 
+         * @return the size of this queue. 
+         */
+        int size(){
+            return n;
+        }
+        
+        /**
+         * Appends a run to this queue.
+         * 
+         * @param run a run to append.
+         */
+        void enqueue( Run run ){
+            n++;
+            Node newNode = new Node( null, run );
+
+            if( head == null )
+                head = newNode;
+            else
+                tail.next = newNode;
+
+            tail = newNode;
+        }
+        
+        /**
+         * Gets the first run (the run at the head of this queue).
+         * 
+         * @return the first run in this queue. 
+         */
+        Run first(){
+            return n < 1 ? null : head.run;
+        }
+
+        /**
+         * Gets the second run in this queue.
+         * 
+         * @return the second run in this queue. 
+         */
+        Run second(){
+            return n < 2 ? null : head.next.run;
+        }
+        
+        /**
+         * Get the last run in this queue.
+         */
+        Run last(){
+            return n < 1 ? null : tail.run;
+        }
+        
+        /**
+         * Substitutes two runs at the head of this <code>Queue</code> with the
+         * run <code>result</code>.
+         * 
+         * @param result the new merged run. 
+         */
+        void merge( Run result ){
+            if( head == null || n < 2 )
+                return;
+
+            head.next = head.next.next;
+            head.run = result;
+            n--;
+        }
+        
+        /**
+         * Places the run residing at the head of this queue to the tail of this
+         * queue.
+         */
+        void bounce(){
+            if( head == null )
+                return;
+
+            if( head.next != null )
+            {
+                Node node = head;
+                head = node.next;
+                tail.next = node;
+                node.next = null;
+                tail = node;
+            }
+        }
+    }
+     
+    /**
+     * Sorts the array <code>unsorted</code> stably and stores the result in
+     * <code>storage</code>. The underlying algorithm is a <b>natural
+     * mergesort</b> capable of merging two runs in sublinear time in some
+     * cases.
+     * 
+     * Beware of sorting large random data with this routine: the algorithm
+     * will degrade to the traditional mergesort, but with enormously large
+     * hidden constant factor. Not to mention, the stack complexity on random
+     * data is O(N) which will yield StackOverflowError on moderately large
+     * input!
+     * 
+     * @param <T> the type of elements to sort.
+     * @param unsorted the input array.
+     * @param storage the array receiving the sorted result.
+     * 
+     * @return <code>storage</code>. 
+     */
+    public static <T extends Comparable<? super T>> T[] AdaptiveMergesort(
+            T[] unsorted,
+            T[] storage
+            )
+    {
+        if( storage == null )
+            return null;
+        
+        if( storage.length < unsorted.length )
+            return null;
+        
+        Queue Q = new Queue();
+        int head;
+        int left = 0;
+        int right = 1;
+
+        final int last = unsorted.length - 1;
+
+        // Scanning through the input and establishing the run queue.
+        while( left < last )
+        {
+            head = left;
+
+            if( unsorted[left++].compareTo( unsorted[right++] ) <= 0 )
+            {
+                // Scanning an ascending run.
+                while(
+                    left < last &&
+                    unsorted[left].compareTo( unsorted[right] ) <= 0
+                )
+                {
+                    left++;
+                    right++;
+                }
+
+                Q.enqueue( new Run( head, left ) );
+            }
+            else
+            {
+                // Scanning a descending run.
+                while(
+                    left < last &&
+                    unsorted[left].compareTo( unsorted[right] ) >= 0
+                )
+                {
+                    left++;
+                    right++;
+                }
+
+                Run run = new Run( head, left );
+                ReverseFreshRun( unsorted, run );
+                Q.enqueue( run );
+            }
+
+            left++;
+            right++;
+        }
+
+        if( left == last )
+            // Enqueue the last run to the queue.
+            Q.enqueue( new Run( last, last ) );
+        
+        Run lastRun = Q.last();
+        
+        // While more then one run in the queue, keep on merging.
+        while( Q.size() > 1 )
+        {
+            if( Q.first() == lastRun )
+            {
+                // Just bounce the head run, and start a new pass.
+                Q.bounce();
+                continue;
+            }
+            else if( Q.second() == lastRun )
+            {
+                // Merge and update the last run reference.
+                Run merged = AdaptiveMerge( unsorted, Q.first(), Q.second() );
+                lastRun = merged;
+                Q.merge( merged );
+            }
+            else
+                // Just merge.
+                Q.merge( AdaptiveMerge( unsorted, Q.first(), Q.second() ) );
+            
+            // Bounce one run to the tail of the queue.
+            Q.bounce();
+        }
+        
+        Reconstruct( unsorted, storage, Q.first() );
+        return storage;
+    }
+    
+    /**
+     * Merges two runs into one run. Unlike the merge operation in the
+     * traditional Mergesort, <code>AdaptiveMerge</code> may merge in
+     * <b>sublinear</b> time in the case the amount of blocks within left and
+     * right runs is low.
+     * 
+     * @param <T> the type of elements being sorted.
+     * @param unsorted the array to put in order.
+     * @param left the left run to merge.
+     * @param right the right run to merge.
+     * 
+     * @return the merged run. 
+     */
+    static <T extends Comparable<? super T>> Run AdaptiveMerge(
+            T[] unsorted,
+            Run left,
+            Run right
+            )
+    {   
+        if(
+            unsorted[left.last.to].compareTo(
+                unsorted[right.first.from]
+                ) <= 0
+        )
+        {
+            // Just append right to left.
+            // Terminates recursion.
+            left.last.next = right.first;
+            right.first.prev = left.last;
+            left.last = right.last;
+            return left;
+        }
+        
+        if(
+            unsorted[right.last.to].compareTo(
+                unsorted[left.first.from]
+                ) < 0
+        )
+        {
+            // Just append left to right. 
+            right.last.next = left.first;
+            left.first.prev = right.last;
+            right.last = left.last;
+            return right;
+        }
+        
+        Run[] runs;
+        Run merged;
+        
+        if(
+            unsorted[left.first.from].compareTo(
+                unsorted[right.first.from]
+                ) <= 0 
+        )
+        {
+            // Split the left run.
+            runs = SplitRun( unsorted, unsorted[right.first.from], left, true );
+            merged = AdaptiveMerge( unsorted, runs[1], right );
+        }
+        else
+        {
+            // Split the right run.
+            runs = SplitRun( unsorted, unsorted[left.first.from], right, false );
+            merged = AdaptiveMerge( unsorted, left, runs[1] );
+        }
+        
+        // Prepend runs[0] to the merged run.
+        runs[0].last.next = merged.first;
+        merged.first.prev = runs[0].last;
+        runs[0].last = merged.last;
+        return runs[0];
+    }
+    
+    /**
+     * Splits <code>run</code> so that <code>splitter</code> may be inserted
+     * between the resulting runs.
+     * 
+     * @param <T> the type of an element.
+     * @param unsorted the array to sort.
+     * @param splitter splitting value.
+     * @param run the run to split.
+     * @param isLeft indicates whether <code>run</code> appears on the left in
+     * the <code>unsorted</code> with regard to <code>splitter</code>.
+     * 
+     * @return the resulting halves of <code>run</code>. 
+     */
+    static <T extends Comparable<? super T>> Run[] SplitRun(
+            T[] unsorted,
+            T splitter,
+            Run run,
+            boolean isLeft
+            )
+    {
+        Run[] runs = new Run[]{ new Run(), new Run() };
+        
+        if( isLeft )
+        {
+            // Pump to the left result run as much elements less or equal then
+            // splitter as possible.
+            Interval splitInterval = run.first;
+            Interval previousInterval = null;
+
+            // Find the interval to split.
+            while( splitInterval != null )
+            {
+                int cmp = unsorted[splitInterval.to].compareTo( splitter );
+                
+                if( cmp < 0 )
+                {
+                    previousInterval = splitInterval;
+                    splitInterval = splitInterval.next;
+                }
+                else if( cmp >= 0 )
+                    break;
+            }
+            
+            if( splitInterval == null )
+                splitInterval = previousInterval;
+            
+            final int from = splitInterval.from;
+            final int to = splitInterval.to;
+            
+            int l = from;
+            int r = to;
+            // mth element goes to the left result run.
+            int m = from - 1;
+            int cmp = 0;
+            
+            if( l < r )
+            {
+                // Perform the binary search.
+                while( l < r )
+                {
+                    m = (l + r) / 2;
+                    cmp = unsorted[m].compareTo( splitter );
+
+                    if( cmp < 0 )
+                        l = m + 1;
+                    else if( cmp > 0 )
+                        r = m - 1;
+                    else
+                        break;
+                }
+                
+                if( cmp == 0 )
+                    // Pump to the left result run as much elements not greater
+                    // then the splitter as possible.
+                    while(
+                        m + 1 <= to &&
+                        unsorted[m + 1].compareTo( splitter ) <= 0
+                    )
+                        m++;
+                else
+                {
+                    int tmp;
+                    m = ((tmp = (l < r ? l : r)) < from ? from : tmp) - 1;
+                    
+                    while(
+                        m + 1 <= to &&
+                        unsorted[m + 1].compareTo( splitter ) <= 0
+                    )
+                        m++;
+                }
+            }
+            else if( unsorted[from].compareTo( splitter ) <= 0 )
+                // The only element goes to the left result run.
+                m = to;
+            else
+                // The only element goes to the right result run.
+                m = from - 1;
+            
+            if( m == from - 1 )
+            {
+                // splitInterval goes entirely into the right result run.
+                runs[0].first = run.first;
+                runs[0].last = splitInterval.prev;
+                splitInterval.prev.next = null;
+                splitInterval.prev = null;
+                runs[1].first = splitInterval;
+                runs[1].last = run.last;
+                return runs;
+            }
+            
+            if( m == to )
+            {
+                // splitInterval goes entirely into the left result run.
+                runs[1].first = splitInterval.next;
+                runs[1].last = run.last;
+                splitInterval.next.prev = null;
+                splitInterval.next = null;
+                runs[0].first = run.first;
+                runs[0].last = splitInterval;
+                return runs;
+            }
+            
+            // unsorted[m] goes to the left result run.
+            Interval left = new Interval( from, m );
+            Interval right = new Interval( m + 1, to );
+            
+            runs[0].last = left;
+            runs[1].first = right;
+            
+            runs[0].first =
+                    run.first != splitInterval ?
+                        run.first :
+                        left;
+            
+            runs[1].last =
+                    run.last != splitInterval ?
+                        run.last :
+                        right;
+            
+            if( splitInterval.prev != null )
+            {
+                splitInterval.prev.next = left;
+                left.prev = splitInterval.prev;
+            }
+            
+            if( splitInterval.next != null )
+            {
+                splitInterval.next.prev = right;
+                right.next = splitInterval.next;
+            }
+        }
+        else
+        {
+            // Pump to the right result run as much elements greater then
+            // the splitter as possible.
+            Interval splitInterval = run.first;
+            Interval previousInterval = null;
+            
+            // Find the interval to split.
+            while( splitInterval != null )
+            {
+                int cmp = unsorted[splitInterval.from].compareTo( splitter );
+                
+                if( cmp < 0 )
+                {
+                    previousInterval = splitInterval;
+                    splitInterval = splitInterval.next;
+                }
+                else if( cmp > 0 )
+                {
+                    if( previousInterval != null )
+                        // Go back a little leftwards.
+                        splitInterval = previousInterval;
+                    
+                    break;
+                }
+                else
+                    break;
+            }
+
+            if( splitInterval == null )
+                splitInterval = previousInterval;
+            
+            final int from = splitInterval.from;
+            final int to = splitInterval.to;
+            
+            int l = from;
+            int r = to;
+            
+            // mth element in the splitInterval goes to the right result run.
+            int m = from - 1;
+            int cmp = 0;
+            
+            if( l < r )
+            {
+                // Perform the binary search.
+                while( l < r )
+                {
+                    m = (l + r) / 2;
+                    cmp = unsorted[m].compareTo( splitter );
+
+                    if( cmp < 0 )
+                        l = m + 1;
+                    else if( cmp > 0 )
+                        r = m - 1;
+                    else
+                        break;
+                }
+                
+                if( cmp == 0 )
+                    // Move leftwards as to leave all the equal elements to the
+                    // right result run.
+                    while(
+                        m - 1 >= from &&
+                        unsorted[m - 1].compareTo( splitter ) == 0
+                    )
+                        m--;
+                else
+                {
+                    int tmp;
+                    m = ((tmp = (l < r ? r : l)) > to ? to : tmp) + 1;
+                    
+                    // Find the leftmost element not less then the splitter.
+                    while(
+                        m - 1 >= from &&
+                        unsorted[m - 1].compareTo( splitter ) >= 0 
+                    )
+                        m--;
+                }
+            }
+            else if( unsorted[from].compareTo( splitter ) >= 0 )
+                // The only element goes to the right result run.
+                m = from;
+            else
+                // The only element goes to the left result run.
+                m = to + 1;
+            
+            if( m == from )
+            {
+                // splitInterval goes entirely into the right result run.
+                runs[0].first = run.first;
+                runs[0].last = splitInterval.prev;
+                splitInterval.prev.next = null;
+                splitInterval.prev = null;
+                runs[1].first = splitInterval;
+                runs[1].last = run.last;
+                return runs;
+            }
+            
+            if( m == to + 1 )
+            {
+                // splitInterval goes entirely into the left result run.
+                runs[1].first = splitInterval.next;
+                runs[1].last = run.last;
+                splitInterval.next.prev = null;
+                splitInterval.next = null;
+                runs[0].first = run.first;
+                runs[0].last = splitInterval;
+                return runs;
+            }
+            
+            // unsorted[m - 1] goes to the left result run.
+            Interval left = new Interval( from, m - 1 );
+            Interval right = new Interval( m, to );
+            
+            runs[0].last = left;
+            runs[1].first = right;
+            
+            runs[0].first =
+                    run.first != splitInterval ?
+                        run.first :
+                        left;
+            
+            runs[1].last =
+                    run.last != splitInterval ?
+                        run.last :
+                        right;
+            
+            if( splitInterval.prev != null )
+            {
+                splitInterval.prev.next = left;
+                left.prev = splitInterval.prev;
+            }
+            
+            if( splitInterval.next != null )
+            {
+                splitInterval.next.prev = right;
+                right.next = splitInterval.next;
+            }
+        }
+        
+        return runs;
+    }
+    
+    /**
+     * Reverses a run <code>run</code> in the array <code>V</code> preserving
+     * the stability of elements.
+     * (The relative order of a group of equal elements is preserved.)
+     * 
+     * @param <T> the array element type.
+     * @param V the array containing the run described by <code>run</code>.
+     * @param run the run to reverse.
+     */
+    static <T extends Comparable<? super T>>
+    void ReverseFreshRun( T[] V, Run run )
+    {
+        for( int i = run.first.from, j = run.first.to; i < j; i++, j-- )
+        {
+            T temp = V[i];
+            V[i] = V[j];
+            V[j] = temp;
+        }
+        
+        int j;
+        int k;
+        
+        // Re-reversing the contiguous sequences of equal elements as to
+        // preserve sorting stability.
+        for( int i = run.first.from; i < run.first.to; i++ )
+        {
+            if( V[i].compareTo( V[i + 1] ) == 0 )
+            {
+                j = i++;
+                
+                while( i < run.first.to && V[i].compareTo( V[i + 1] ) == 0 )
+                    i++;
+                
+                k = i;
+                
+                while( j < k )
+                {
+                    T tmp = V[j];
+                    V[j] = V[k];
+                    V[k] = tmp;
+                    j++;
+                    k--;
+                }
+                
+                i++;
+            }
+        }
+    }
+    
+    /**
+     * Reconstructs a run <code>all</code> using elements from
+     * <code>unsorted</code>, and stores data in <code>storage</code>.
+     * 
+     * @param <T> the array element type.
+     * @param unsorted the source array.
+     * @param storage the array holding the run <code>all</code>.
+     * @param all the run to reconstruct.
+     * 
+     * @return the amount of blocks. 
+     */
+    static <T> int Reconstruct( T[] unsorted, T[] storage, Run all ){
+        if( all == null )
+            return -1;
+        
+        int blocks = 0;
+        int index = 0;
+        
+        for( Interval i = all.first; i != null; i = i.next )
+        {
+            blocks++;
+            for( int j = i.from; j <= i.to; j++ )
+                storage[index++] = unsorted[j];
+        }
+        
+        return blocks;
+    }
+    
+    /**
+     * The entry point of a demo.
+     * 
+     * @param args the command line arguments. 
+     */
+    public static void main( String... args ){
+        int N = 1000000;
+        
+        if( args.length > 0 )
+        {
+            try {
+                N = Integer.parseInt( args[0] );
+            }
+            catch( NumberFormatException e ){
+                System.out.println(
+                        "usage: INVOKE-VM [N]\n" +
+                        " where N is a list size."
+                        );
+                
+                System.exit( -1 );
+            }
+        }
+        
+        if( N < 0 )
+        {
+            System.out.println( "N corrected from " + N + " to 16." );
+            N = 16;
+        }
+        
+        System.out.println( "--- Performance demo ---\n" );
+        System.out.println( "Element amount: " + N );
+        
+        Integer[] array = getStronglyBlockedArray( N, 303L );
+        Integer[] array2 = array.clone();
+        
+        if( N <= 16 )
+            System.out.print( "Before: " );
+        
+        printIntegerArray( array );
+        
+        long ta = System.currentTimeMillis();
+        // Getting the sorted result requires creating a storage array. Let's
+        // include its creation into the time measurement.
+        Integer[] storage = new Integer[array.length];
+        AdaptiveMergesort( array, storage );
+        long tb = System.currentTimeMillis();
+        
+        if( N <= 16 )
+            System.out.print( "After:  " );
+        
+        printIntegerArray( storage );
+        
+        System.out.println( "Sorted: " + isSorted( storage ) );
+        System.out.println( "Time (AdaptiveMergesort): " + (tb - ta) + " ms." );
+        
+        ta = System.currentTimeMillis();
+        Arrays.sort( array2 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println( "Time (Arrays.sort): " + (tb - ta) + " ms.\n" );
+        System.out.println( "--- Stability demo ---\n" );
+
+        stabilityTest();
+    }
+    
+    static Integer[] getDescendingArray( int size ){
+        Integer[] array = new Integer[size];
+        
+        for( int i = 0; i < size; i++ )
+            array[i] = size - i;
+        
+        return array;
+    }
+    
+    static Integer[] getStronglyBlockedArray( int size, long seed ){
+        Integer[] array = getDescendingArray( size );
+        Random r = new Random( seed );
+        int n = (int) Math.sqrt( size ) / 2;
+        
+        for( int i = 0; i < n; i++ )
+        {
+            int index = r.nextInt( size - n + 1 );
+            int index2 = r.nextInt( size - n + 1 );
+            Integer[] tmp = new Integer[n];
+            
+            for( int j = 0; j < n; j++ )
+                tmp[j] = array[index + j];
+            
+            for( int j = 0; j < n; j++ )
+                array[index + j] = array[index2 + j];
+            
+            for( int j = 0; j < n; j++ )
+                array[index2 + j] = tmp[j];
+        }
+        
+        return array;
+    }
+    
+    static boolean isSorted( Integer[] array ){
+        for( int i = 0; i < array.length - 1; i++ )
+            if( array[i].compareTo( array[i + 1] ) > 0 )
+                return false;
+        
+        return true;
+    }
+    
+    public static boolean printIntegerArray( Integer[] array ){
+        if( array.length > 16 )
+            return false;
+        
+        for( Integer i : array )
+            System.out.print( i + " " );
+        
+        System.out.println();
+        return true;
+    }
+    
+    static void stabilityTest(){
+        Person[] personList1 = new Person[]{
+            new Person( "Pekka", "Karjalainen" ),
+            new Person( "Marjo", "Funkytalo" ),
+            new Person( "Jesse", "Karjalainen" ),
+            new Person( "Maritta", "Kättölä" ),
+            new Person( "Anna", "Funkytalo" ),
+            new Person( "Matti", "Karjalainen" ),
+            new Person( "Antero", "Kättölä" )
+        };
+        
+        Person[] personList2 = personList1.clone();
+        FirstNameComparator cmp = new FirstNameComparator();
+        
+        // Sort by the secondary key (the first name).
+        Arrays.sort( personList1, cmp );
+        Arrays.sort( personList2, cmp );
+        
+        Person[] storageList = new Person[personList1.length];
+        
+        // Sort by the primary key (the last name).
+        AdaptiveMergesort( personList2, storageList );
+        Arrays.sort( personList1 );
+        
+        boolean stable = true;
+        
+        System.out.println( "Arrays.sort():          AdaptiveMergesort():" );
+        
+        for( int i = 0; i < storageList.length; i++ )
+        {
+            System.out.printf( "%-23s ", personList1[i] + " " );
+            System.out.println( storageList[i] );
+            
+            if( personList1[i] != storageList[i] )
+                // If this happens, AdaptiveMergesort did not sort stably.
+                stable = false;
+        }
+        
+        System.out.println( "\nStable: " + stable );
+    }
+    
+    static class Person implements Comparable<Person> {
+        String firstName;
+        String lastName;
+        
+        Person( String firstName, String lastName ){
+            this.firstName = firstName;
+            this.lastName = lastName;
+        }
+        
+        public int compareTo( Person right ){
+            return lastName.compareTo( right.lastName );
+        }
+        
+        public String toString(){
+            return "[ " + lastName + ", " + firstName + " ]";
+        }
+    }
+    
+    static class FirstNameComparator implements Comparator<Person> {
+        public int compare( Person left, Person right ){
+            return left.firstName.compareTo( right.firstName );
+        }
+    }
+}

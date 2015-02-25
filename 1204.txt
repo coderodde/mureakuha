@@ -1,0 +1,509 @@
+import java.util.Random;
+import java.util.Arrays;
+
+public class Main {
+
+    /** Partition kuvaa yhden j‰rjestetyn osalistan. */
+    static class Partition {
+        int from; // alkuindeksi
+        int to;   // loppuindeksi
+
+        Partition( int from, int to ){
+            this.from = from;
+            this.to = to;
+        }
+    }
+
+    /** Mallintaa QueueMergeSort:n tarvitseman jonorakenteen. */
+    static class Queue {
+
+        /** Mallintaa jonon Queue solmun. Jokaisessa solmussa on Partition-
+         objekti, joka kuvaa yhden j‰rjestyksess‰ olevan osalistan. */
+        private static class Node {
+            Node next; // jonon seuraava solmu
+
+            Partition partition;
+
+            /** Luo uuden solmun. */
+            Node( Node next, Partition partition ){
+                this.next = next;
+                this.partition = partition;
+            }
+        }
+
+        private Node head;  // jonon alkup‰‰
+        private Node tail;  // jonon h‰nt‰
+        private int n;      // solmujen m‰‰r‰
+
+        /** Luo uuden, tyhj‰n jonon. */
+        Queue(){
+            head = null;
+            tail = null;
+            n = 0;
+        }
+
+        /** Palauttaa jonon alkioiden lukum‰‰r‰n. */
+        int size(){
+            return n;
+        }
+
+        /** Lis‰‰ p:n jonon h‰nt‰‰n.
+         * @param p lis‰tt‰v‰ Partition-objekti
+         */
+        void enqueue( Partition p ){
+            n++;
+            Node newNode = new Node( null, p );
+
+            if( head == null )
+                head = newNode;
+            else
+                tail.next = newNode;
+
+            tail = newNode;
+        }
+
+        /** Palauttaa jonon ensimm‰isen Partition-objektin. */
+        Partition first(){
+            return n < 1 ? null : head.partition;
+        }
+
+        /** Palauttaa jonon toisen Partition-objektin. */
+        Partition second(){
+            return n < 2 ? null : head.next.partition;
+        }
+
+        /** Yhdist‰‰ jonon kaksi ensimm‰ist‰ Partition-objektia yhdeksi. */
+        void merge(){
+            if( head == null )
+                return;
+
+            Node second = head.next;
+
+            if( second == null )
+                return;
+
+            head.partition.to = second.partition.to;
+            head.next = second.next;
+
+            n--;
+        }
+
+        /** Laittaa jonon ensimm‰isen solmun jonon viimeiseksi. */
+        void bounce(){
+            if( head == null )
+                return;
+
+            if( head.next != null )
+            {
+                Node node = head;
+                head = node.next;
+                tail.next = node;
+                node.next = null;
+                tail = node;
+            }
+        }
+    }
+
+    /** K‰‰nt‰‰ p:n kuvaaman osalistan p‰invastaiseen j‰rjestykseen. QMS k‰ytt‰‰
+     * t‰t‰ rutiinia kun skannausvaiheessa on tarvetta k‰‰nt‰‰ aidosti laskeva
+     * osalista aidosti nousevaksi.
+     * @param <T> lista-alkion tyyppi
+     * @param V lista, jossa k‰‰nnˆs tapahtuu
+     * @param p k‰‰nnett‰v‰‰ osalistaa kuvaava Partition-objekti
+     */
+    static <T> void reversePartition( T[] V, Partition p )
+    {
+        for( int i = p.from, j = p.to; i < j; i++, j-- )
+        {
+            T temp = V[i];
+            V[i] = V[j];
+            V[j] = temp;
+        }
+    }
+
+     /** Lomittaa left:n ja right:n kuvaamat osalistat source:ssa ja tallentaa
+     * tuloksen destination-listaan.
+     * @param <T> lista-alkion tyyppi
+     * @param source l‰hdelista, jossa left:n ja right:n kuvaamat osalistat
+     * sijaitsevat
+     * @param destination tuloslista, johon lomitettu osalista tallennetaan
+     * @param left kuvaa vasemmanpuoleisen osalistan
+     * @param right kuvaa oikeanpuoleisen osalistan
+     */
+    static <T extends Comparable<T>> void merge(
+            T[] source,
+            T[] destination,
+            Partition left,
+            Partition right
+            )
+    {
+        int il = left.from;
+        int ir = right.from;
+
+        int ilmax = left.to;
+        int irmax = right.to;
+
+        int i = il;
+
+        while( il <= ilmax && ir <= irmax )
+            destination[i++] =
+                    source[il].compareTo( source[ir] ) <= 0 ?
+                        source[il++] :
+                        source[ir++] ;
+
+        for(; il <= ilmax; il++, i++ )
+            destination[i] = source[il];
+
+        for(; ir <= irmax; ir++, i++ )
+            destination[i] = source[ir];
+    }
+
+    /**
+     * J‰rjest‰‰ argumenttilistan nousevaan j‰rjestykseen ja palauttaa sen
+     * return-lauseella (algoritmin suorituksen j‰lkeen itse argumenttilista ei
+     * siis v‰ltt‰m‰tt‰ ole j‰rjestyksess‰). Algoritmi on kaksivaiheinen:
+     * ensimm‰isess‰ vaiheessa QMS tutkii jo lajitellut osalistat (Partition)
+     * tai aidosti laskevat osalistat. Kun skannataan aid. laskeva osalista, se
+     * k‰‰nnet‰‰n aidosti nousevaksi reversePartition-rutiinilla. Riippumatta
+     * osalistan tyypist‰, sen alku- ja loppukohtaa kuvaava Partition-objekti
+     * lis‰t‰‰n jonoon Q. Skannaus k‰sitt‰‰ siis yhden l‰pik‰ynnin, jolloin
+     * ensimm‰isen vaiheen vaativuus on O(n).
+     * Toisessa vaiheessa algoritmi poimii jonosta Q kaksi ensimm‰ist‰ Partition-
+     * objektia ja lomittaa niiden kuvaamat osalistat yhdeksi nousevaksi
+     * osalistaksi merge-rutiinilla. Samalla kaksi em. Partition-objektia
+     * yhdistet‰‰n yhdeksi Partition-objektiksi (Q.merge();), joka kuvaakin
+     * ‰sken lomitettua osalistaa, mink‰ j‰lkeen yhdistetty Partition-objekti
+     * asetetaan jonon Q viimeiseksi alkioksi (Q.bounce();). N‰in menettell‰‰n
+     * siihen asti kunnes jonossa Q on vain yksi Partition-objekti, joka
+     * kuvaakin koko j‰rjestetty‰ listaa.
+     * Pahin tapaus on kyseess‰, kun j‰rjestetyt osalistat ovat vain kahden
+     * alkion pituisia. Tuolloin QMS suorittaa samat lomittamiset mit‰
+     * tavallinen MergeSort olisi tehnyt. QMS:n toisen vaiheen aikavaativuus on
+     * siis O(n * log n).
+     * @param <T> lista-alkion tyyppi, joka on johdettu Comparable-rajapinnasta
+     * @param V lajiteltava lista
+     * @return lajiteltu lista
+     */
+    public static <T extends Comparable<T>> T[] QueueMergeSort( T V[] )
+    {
+        Queue Q = new Queue();
+
+        T[] source = V;
+        T[] destination = (T[]) V.clone();
+
+        int head;
+        int left = 0;
+        int right = 1;
+
+        final int last = V.length - 1;
+
+        // skannataan koko lista ja muodostetaan jono Partition-objekteja
+        while( left < last )
+        {
+            head = left;
+
+            if( V[left++].compareTo( V[right++] ) <= 0 )
+            {
+                // ollaan skannaamassa nousevan osalistan
+                while( left < last && V[left].compareTo( V[right] ) <= 0 )
+                {
+                    left++;
+                    right++;
+                }
+
+                Q.enqueue( new Partition( head, left ) );
+            }
+            else
+            {
+                // ollaan skannaamassa aid. laskevan osalistan
+                while( left < last && V[left].compareTo( V[right] ) > 0 )
+                {
+                    left++;
+                    right++;
+                }
+
+                Partition p = new Partition( head, left );
+                // k‰‰nn‰ aid. laskeva osalista aid. nousevaksi
+                reversePartition( V, p );
+                Q.enqueue( p );
+            }
+
+            left++;
+            right++;
+        }
+
+        // lis‰‰ viimeinen, yhden alkion pituinen osalista Q:hun
+        if( left == last )
+            Q.enqueue( new Partition( last, last ) );
+
+        while( Q.size() > 1 )
+        {
+            Partition leftPart  = Q.first();
+            Partition rightPart = Q.second();
+
+            boolean swap =
+                ( leftPart.to == last || rightPart.to == last ) ?
+                    true :
+                    false;
+
+            // varmista, ett‰ leftPart ja rightPart ovat vierekk‰isi‰
+            if( leftPart.to + 1 == rightPart.from )
+            {
+                // suorita lomittaminen ja yhdist‰ leftPart ja rightPart
+                // yhdeksi Partition-objektiksi
+                merge( source, destination, leftPart, rightPart );
+                Q.merge();
+            }
+            else
+                for( int i = leftPart.from; i <= leftPart.to; i++ )
+                    destination[i] = source[i];
+
+            // laita yhdistetty Partition-objekti jonon viimeiseksi;
+            // n‰in seuraavat kaksi Partition-objektia ovat saatavana seuraavan
+            // lomittamisen yhteydess‰
+            Q.bounce();
+
+            if( swap )
+            {
+                T[] tmp = source;
+                source = destination;
+                destination = tmp;
+            }
+        }
+
+        // kun jonoon j‰‰ 2 Partition-objektia, merge-operaatio hakee alkiot
+        // source-listasta ja asettaa ne destination-listaan, tuolloin
+        // jompikumpi osalistoista ulottuu koko listan loppuun, jolloin
+        // source- ja destination-muuttujat vaihdetaan kesken‰‰n (tuloslista
+        // p‰‰ttyy source-muuttujaan).
+        return source;
+    }
+
+    /** Testiajuri. */
+    public static void main( String... args ){
+        long ta;
+        long tb;
+
+        Integer[] list1 = getAscendingList( 1000000 );
+        Integer[] list2 = getAscendingList( 1000000 );
+
+        // profiloidaan jo j‰rjestetyill‰ listoilla
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list1 ) )
+        {
+            System.out.println(
+                "Sorted an already sorted list with Arrays.sort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("Arrays.sort failed on sorted list!");
+
+        ta = System.currentTimeMillis();
+        list2 = QueueMergeSort( list2 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list2 ) )
+        {
+            System.out.println(
+                "Sorted an already sorted list with QueueMergeSort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("QueueMergeSort failed on sorted list!");
+
+        System.out.println(
+                "Sorted lists are equal: " + listEquals( list1, list2 ) + "\n"
+                );
+
+        // profiloidaan k‰‰nteisess‰ j‰rjestyksess‰ olevilla listoilla
+        list1 = getDescendingList( 1000000 );
+        list2 = getDescendingList( 1000000 );
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list1 ) )
+        {
+            System.out.println(
+                "Sorted a reverse-sorted list with Arrays.sort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("Arrays.sort failed on reversed-sorted list!");
+
+        ta = System.currentTimeMillis();
+        list2 = QueueMergeSort( list2 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list2 ) )
+        {
+            System.out.println(
+                "Sorted a reverse-sorted list with QueueMergeSort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("QueueMergeSort failed on reverse-sorted list!");
+
+        System.out.println(
+                "Sorted lists are equal: " + listEquals( list1, list2 ) + "\n"
+                );
+
+        // profiloidaan osittain j‰rjestyksess‰ olevilla listoilla
+        list1 = getPartiallySortedList( 1000000, 2 );
+        list2 = getPartiallySortedList( 1000000, 2 );
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list1 ) )
+        {
+            System.out.println(
+                "Sorted a partially sorted list with Arrays.sort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("Arrays.sort failed on partially sorted list!");
+
+        ta = System.currentTimeMillis();
+        list2 = QueueMergeSort( list2 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list2 ) )
+        {
+            System.out.println(
+                "Sorted a partially sorted list with QueueMergeSort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println(
+                "QueueMergeSort failed on partially sorted list!"
+                );
+
+        System.out.println(
+                "Sorted lists are equal: " + listEquals( list1, list2 ) + "\n"
+                );
+
+        // profiloidaan satunnaisilla listoilla
+        list1 = getRandomList( 1000000 );
+        list2 = (Integer[]) list1.clone();
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list1 ) )
+        {
+            System.out.println(
+                "Sorted a random list with Arrays.sort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("Arrays.sort failed on random list!");
+
+        ta = System.currentTimeMillis();
+        list2 = QueueMergeSort( list2 );
+        tb = System.currentTimeMillis();
+
+        if( isSorted( list2 ) )
+        {
+            System.out.println(
+                "Sorted a random list with QueueMergeSort in " +
+                (tb - ta) + " ms."
+                );
+        }
+        else
+            System.out.println("QueueMergeSort failed on random list!");
+
+        System.out.println(
+                "Sorted lists are equal: " + listEquals( list1, list2 ) + "\n"
+                );
+
+        //// printtausdemo ////
+        Integer[] myList = getRandomList( 16 );
+
+        System.out.print( "Before QueueMergesort: " );
+        println( myList );
+
+        Integer[] sortedList = QueueMergeSort( myList );
+
+        System.out.print( "After QueueMergeSort:  " );
+        println( sortedList );
+    }
+
+    static Integer[] getAscendingList( int size ){
+        Integer[] array = new Integer[ size ];
+
+        for( int i = 0; i < size; i++ )
+            array[i] = i;
+
+        return array;
+    }
+
+    static Integer[] getDescendingList( int size ){
+        Integer[] array = new Integer[ size ];
+
+        for( int i = 0; i < size; i++ )
+            array[i] = size - i - 1;
+
+        return array;
+    }
+
+    static Integer[] getRandomList( int size ){
+        Integer[] array = new Integer[ size ];
+        Random r = new Random();
+
+        for( int i = 0; i < size; i++ )
+            array[i] = r.nextInt( size );
+
+        return array;
+    }
+
+    static Integer[] getPartiallySortedList( int size, int runs ){
+        Integer[] array = new Integer[ size ];
+
+        for( int i = 0; i < size; i++ )
+            array[i] = i % (size / runs);
+
+        return array;
+    }
+
+    static <T extends Comparable<T>> boolean isSorted( T[] array ){
+        for( int i = 0; i < array.length - 1; i++ )
+            if( array[i].compareTo( array[i + 1] ) > 0 )
+                return false;
+
+        return true;
+    }
+
+    static <T> void println( T[] list ){
+        int n = Math.min( list.length, 20 );
+
+        for( int i = 0; i < n; i++ )
+            System.out.print( list[i].toString() + " " );
+
+        System.out.println();
+    }
+
+    static boolean listEquals( Integer[] ll, Integer[] lr ){
+        if( ll.length != lr.length )
+            return false;
+
+        for( int i = 0; i < ll.length; i++ )
+            if( !ll[i].equals( lr[i] ) )
+                return false;
+
+        return true;
+    }
+}

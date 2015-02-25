@@ -1,0 +1,542 @@
+import java.util.HashSet;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.Collections;
+
+public class Main {
+    static final int MAX_MISSIONARIES = 3;
+    static final int MAX_CANNIBALS = 3;
+
+    /**
+     * Computes the shortest-path tree in the given undirected, unweighted
+     * graph.
+     * @param <T> type of the nodes' satellite data
+     * @param source the source node
+     * @param destination the destination node
+     * @return map storing the shortest-path tree.
+     */
+    static <T> HashMap<SimpleUnweightedGraphNode<T>,
+                       SimpleUnweightedGraphNode<T>>
+                       BreadthFirstSearch(
+                            SimpleUnweightedGraphNode<T> source,
+                            SimpleUnweightedGraphNode<T> destination
+                            )
+    {
+        HashSet<SimpleUnweightedGraphNode<T>> visited =
+                new HashSet<SimpleUnweightedGraphNode<T>>();
+
+        HashMap<SimpleUnweightedGraphNode<T>,
+                SimpleUnweightedGraphNode<T>> parent =
+                    new HashMap<SimpleUnweightedGraphNode<T>,
+                                SimpleUnweightedGraphNode<T>>();
+
+        LinkedList<SimpleUnweightedGraphNode<T>> Q =
+                new LinkedList<SimpleUnweightedGraphNode<T>>();
+
+        Q.addLast( source );
+        visited.add( source );
+
+        while( Q.size() > 0 )
+        {
+            SimpleUnweightedGraphNode<T> current = Q.removeFirst();
+
+            if( current.equals( destination ) )
+                return parent;
+
+            for( SimpleUnweightedGraphNode<T> u : current.adj )
+                if( !visited.contains( u ) )
+                {
+                    // Mark.
+                    visited.add( u );
+                    // Enqueue.
+                    Q.addLast( u );
+                    // Mark the parent node at the shortest path to u.
+                    parent.put( u, current );
+                }
+        }
+
+        return parent;
+    }
+
+    /**
+     * Extracts the shortest path from the pre-specified source node to
+     * the destination node.
+     * @param <T> type of the nodes' satellite data
+     * @param destination the destination node
+     * @param parentMap the shortest-path tree
+     * @return shortest path from the source node to the destination node, if
+     * any.
+     */
+    static <T> ArrayList<SimpleUnweightedGraphNode<T>> GetPathTo(
+            SimpleUnweightedGraphNode<T> destination,
+            HashMap<SimpleUnweightedGraphNode<T>,
+                    SimpleUnweightedGraphNode<T>> parentMap
+            )
+    {
+        if( parentMap.get( destination ) == null )
+            return null;
+
+        ArrayList<SimpleUnweightedGraphNode<T>> path =
+                new ArrayList<SimpleUnweightedGraphNode<T>>();
+
+        SimpleUnweightedGraphNode<T> current = destination;
+
+        do {
+            path.add( current );
+            current = parentMap.get( current );
+        }
+        while( current != null );
+
+        Collections.reverse( path );
+        return path;
+    }
+
+    /**
+     * This class represents a node (a vertex) in the simple (undirected),
+     * unweighted graph.
+     * @param <T> type of the nodes' satellite data
+     */
+    public static class SimpleUnweightedGraphNode<T> {
+        protected T datum;
+        protected HashSet<SimpleUnweightedGraphNode<T>> adj;
+
+        /**
+         * Constructs a new node.
+         * @param datum satellite datum of the newly created node
+         */
+        public SimpleUnweightedGraphNode( T datum ){
+            this.datum = datum;
+            adj = new HashSet<SimpleUnweightedGraphNode<T>>();
+        }
+
+        /**
+         * Returns the satellite data associated with this node, if any.
+         * @return satellite data of this node.
+         */
+        public T getDatum(){
+            return datum;
+        }
+
+        /**
+         * Creates an edge between this node and the node represented by
+         * <code>other</code>.
+         * @param other adjacent node
+         * @return <code>true</code> if the edge was created, <code>false</code>
+         * otherwise.
+         */
+        public boolean connect( SimpleUnweightedGraphNode<T> other ){
+            if( other == null || other == this )
+                return false;
+
+            adj.add( other );
+            other.adj.add( this );
+            return true;
+        }
+
+        /**
+         * Tests whether this node equals the node <code>other</code>.
+         * @param other the second node to compare against
+         * @return <code>true</code> if this node's satellite data equals the
+         * satellite data of the node <code>other</code>.
+         */
+        public boolean equals( Object other ){
+            if( other == this )
+                return true;
+
+            if( !(other instanceof SimpleUnweightedGraphNode) )
+                return false;
+
+            return this.datum.equals(
+                    ((SimpleUnweightedGraphNode<T>) other).datum
+                    );
+        }
+
+        /**
+         * Returns the degree of this node.
+         * @return degree of this node
+         */
+        public int degree(){
+            return adj.size();
+        }
+    }
+
+    enum BoatLocation {
+        SOURCE_BANK,
+        DESTINATION_BANK
+    }
+
+    /**
+     * This class represents the game state in the "Missionaries and cannibals"
+     * - puzzle.
+     */
+    static class State {
+        int missionaries;
+        int cannibals;
+        BoatLocation boatLocation;
+
+        /**
+         * Creates a new game state in the "Missionaries and cannibals" -
+         * puzzle.
+         * @param missionaries amount of missionaries on the source riverbank
+         * @param cannibals amount of cannibals on the source riverbank
+         * @param boatLocation location of the boat in the state
+         */
+        State( int missionaries, int cannibals, BoatLocation boatLocation ){
+            if( missionaries < 0 || missionaries > MAX_MISSIONARIES )
+                throw new IllegalArgumentException(
+                        "Amount of missionaries passed out of range [ 0, " +
+                        MAX_MISSIONARIES + " ]."
+                        );
+
+            if( cannibals < 0 || cannibals > MAX_CANNIBALS )
+                throw new IllegalArgumentException(
+                        "Amount of cannibals passed out of range [ 0, " +
+                        MAX_CANNIBALS + " ]."
+                        );
+
+            this.missionaries = missionaries;
+            this.cannibals = cannibals;
+            this.boatLocation = boatLocation;
+        }
+
+        /**
+         * Tests whether in this state cannibals eat missionaries on any
+         * riverbank.
+         * @return <code>true</code> if this state represents a terminal state,
+         * <code>false</code> otherwise.
+         */
+        boolean isTerminalState(){
+            if( missionaries > 0 && missionaries < cannibals )
+                return true;
+
+            if(
+                MAX_MISSIONARIES - missionaries > 0 &&
+                MAX_MISSIONARIES - missionaries <
+                MAX_CANNIBALS - cannibals
+            )
+                return true;
+
+            return false;
+        }
+
+        /**
+         * Tests whether the two states are the same.
+         * @param other the other state to test against
+         * @return <code>true</code> if the two states represent the same
+         * situation.
+         */
+        public boolean equals( Object other ){
+            if( other == this )
+                return true;
+
+            if( !(other instanceof State) )
+                return false;
+
+            State o = (State) other;
+            return
+                missionaries == o.missionaries &&
+                cannibals == o.cannibals &&
+                boatLocation == o.boatLocation;
+        }
+
+        /**
+         * Returns a string representation of this state.
+         * @return string representation of this state.
+         */
+        public String toString(){
+            StringBuilder sb = new StringBuilder();
+
+            // Situation at the source bank.
+            sb.append( "[ m: " );
+            sb.append( this.missionaries );
+            sb.append( ", c: " );
+            sb.append( this.cannibals );
+            sb.append( " ]" );
+
+            if( this.boatLocation == BoatLocation.SOURCE_BANK )
+                sb.append( "v ~~ " );
+            else
+                sb.append( " ~~ v" );
+
+            // Situation at the destination bank.
+            sb.append( "[ m: " );
+            sb.append( MAX_MISSIONARIES - this.missionaries );
+            sb.append( ", c: " );
+            sb.append( MAX_CANNIBALS - this.cannibals );
+            sb.append( " ]" );
+
+            return sb.toString();
+        }
+    }
+
+    public static void main( String... args ){
+        // Create the state graph.
+        ArrayList<SimpleUnweightedGraphNode<State>> graph = generateGraph();
+
+        System.out.println( "State nodes in the graph: " + graph.size() );
+
+        int degree = 0;
+
+        for( SimpleUnweightedGraphNode<State> node : graph )
+            degree += node.degree();
+
+        System.out.println(
+                "Edges (state transitions) in the graph: " + degree / 2
+                );
+
+        // Get the source state (all missionaries and cannibals at the source
+        // riverbank).
+        SimpleUnweightedGraphNode<State> source = graph.get(
+                graph.indexOf(
+                    new SimpleUnweightedGraphNode<State>(
+                        new State(
+                            MAX_MISSIONARIES,
+                            MAX_CANNIBALS,
+                            BoatLocation.SOURCE_BANK
+                            )
+                        )
+                    )
+                );
+
+        // Get the destination state (all missionaries and cannibals at the
+        // destination riverbank).
+        SimpleUnweightedGraphNode<State> destination = graph.get(
+                graph.indexOf(
+                    new SimpleUnweightedGraphNode<State>(
+                        new State( 0, 0, BoatLocation.DESTINATION_BANK )
+                        )
+                    )
+                );
+
+        // Compute the shortest-path tree in our undirected, unweighted graph.
+        HashMap<SimpleUnweightedGraphNode<State>,
+                SimpleUnweightedGraphNode<State>> parentTree =
+                    BreadthFirstSearch( source, destination );
+
+        // Extract the path from the source state to the destination state.
+        ArrayList<SimpleUnweightedGraphNode<State>> path =
+                GetPathTo( destination, parentTree );
+
+        if( path != null )
+            System.out.println(
+                    "States in the shortest solution path: " + path.size()
+                    );
+        else
+        {
+            System.out.println( "No solution." );
+            System.exit( 0 );
+        }
+
+        // Print the transitions leading from the source state to the
+        // destination state.
+        for( int i = 0; i < path.size() - 1; i++ )
+            System.out.printf(
+                    "Transition %2d: " + path.get( i ).getDatum() + " -> " +
+                    path.get( i + 1 ).getDatum() + "\n",
+                    i + 1
+                    );
+    }
+
+    /**
+     * Generates the state graph for "Missionaries and cannibals" - puzzle.
+     * @return the state graph for "Missionaries and cannibals" - puzzle.
+     */
+    static ArrayList<SimpleUnweightedGraphNode<State>> generateGraph()
+    {
+        ArrayList<SimpleUnweightedGraphNode<State>> graph =
+                new ArrayList<SimpleUnweightedGraphNode<State>>();
+
+        // Create all the possible states (the vertices of the state graph).
+        for( int m = 0; m <= MAX_MISSIONARIES; m++ )
+            for( int c = 0; c <= MAX_CANNIBALS; c++ )
+            {
+                graph.add(
+                        new SimpleUnweightedGraphNode<State>(
+                            new State( m, c, BoatLocation.SOURCE_BANK )
+                            )
+                        );
+
+                graph.add(
+                        new SimpleUnweightedGraphNode<State>(
+                            new State( m, c, BoatLocation.DESTINATION_BANK )
+                            )
+                        );
+            }
+
+        // Create all possible transitions between the states (undirected edges
+        // in the simple graph).
+        for( SimpleUnweightedGraphNode<State> stateNode : graph )
+        {
+            State state = stateNode.getDatum();
+
+            if( state.isTerminalState() )
+                // A state in which cannibals eat missionaries on a riverbank.
+                // Skip and do not connect with other states.
+                continue;
+
+            SimpleUnweightedGraphNode<State> node = null;
+            SimpleUnweightedGraphNode<State> target = null;
+
+            if( state.boatLocation == BoatLocation.SOURCE_BANK )
+            {
+                if( state.missionaries > 1 )
+                {
+                    // Send two missionaries from the source riverbank.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries - 2,
+                                state.cannibals,
+                                BoatLocation.DESTINATION_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( state.cannibals > 1 )
+                {
+                    // Send two cannibals.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries,
+                                state.cannibals - 2,
+                                BoatLocation.DESTINATION_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( state.missionaries > 0 && state.cannibals > 0 )
+                {
+                    // Send a missionary and a cannibal.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries - 1,
+                                state.cannibals - 1,
+                                BoatLocation.DESTINATION_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( state.missionaries > 0 )
+                {
+                    // Send a missionary.
+                    node = new SimpleUnweightedGraphNode(
+                            new State(
+                                state.missionaries - 1,
+                                state.cannibals,
+                                BoatLocation.DESTINATION_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( state.cannibals > 0 )
+                {
+                    // Send a cannibal.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries,
+                                state.cannibals - 1,
+                                BoatLocation.DESTINATION_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+            }
+            else if( state.boatLocation == BoatLocation.DESTINATION_BANK )
+            {
+                if( MAX_MISSIONARIES - state.missionaries > 1 )
+                {
+                    // Receive two missionaries from the destination riverbank.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries + 2,
+                                state.cannibals,
+                                BoatLocation.SOURCE_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( MAX_CANNIBALS - state.cannibals > 1 )
+                {
+                    // Reveive two cannibals.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries,
+                                state.cannibals + 2,
+                                BoatLocation.SOURCE_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if(
+                    MAX_MISSIONARIES > state.missionaries &&
+                    MAX_CANNIBALS > state.cannibals
+                )
+                {
+                    // Reveive a missionary and a cannibal.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries + 1,
+                                state.cannibals + 1,
+                                BoatLocation.SOURCE_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( MAX_MISSIONARIES > state.missionaries )
+                {
+                    // Receive a missionary.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries + 1,
+                                state.cannibals,
+                                BoatLocation.SOURCE_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+
+                if( MAX_CANNIBALS > state.cannibals )
+                {
+                    // Receive a cannibal.
+                    node = new SimpleUnweightedGraphNode<State>(
+                            new State(
+                                state.missionaries,
+                                state.cannibals + 1,
+                                BoatLocation.SOURCE_BANK
+                                )
+                            );
+
+                    if( !node.getDatum().isTerminalState() )
+                        stateNode.connect( graph.get( graph.indexOf( node ) ) );
+                }
+            }
+        }
+
+        return graph;
+    }
+}

@@ -1,0 +1,137 @@
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+
+// Kokoelmaiteraattoria toteuttaessa foreach - silmukkaa varten on pari
+// tavanomaisinta vaihtoehtoa:
+// (1) kokoelma on itsensä iteraattori,
+// (2) kokoelma palauttaa autonomisen iteraattoriolion jokaiseen foreach -
+//     silmukkaan.
+// 1. tavassa vältytään mm. new - operaatiolta, mutta tuolloin ei voida
+// tarkoituksenomaisesti iteroida alkiovektoreiden yli sisäkkäisiä for -
+// silmukoita käyttäen. Tapa (2) ratkaisee em. puutteen mutta kuluttaa enemmän
+// muistia. =[ Tässä siis helpoin tapa.
+
+// Tarvitaan jokin kokoelmarakenne. Rajoitutaan tähän.
+class Array<T> implements Iterator<T>, Iterable<T> {
+    private int size;
+    private int capacity;
+    private Object[] elements;
+
+    private int index; // Iteroidessa sijainti on jotenkin muistettava..
+
+    Array( int capacity ){
+        this.capacity = capacity;
+        elements = new Object[capacity];
+    }
+
+    //// ////////////////////////////////////////
+     // FOR-EACH - KONEISTON MÄÄRITTELY ALKAA //
+    //////////////////////////////////////// ////
+
+    // Ainut metodi java.lang.Iterable - rajapinnasta.
+    // Pitää olla public.
+    public Iterator<T> iterator(){
+        // Joitain alustuksia on tehtävä aina
+        // kun foreach - silmukka hakee iteraattorin.
+        index = -1;
+        // Olio on itsensä iteraattori.
+        return this;
+    }
+
+    // java.util.Iterator - rajapinnan metodi kuten seuraavatkin kaksi.
+    // Kaikki kolme varustettava public - saantimääreellä.
+    public T next(){
+        // Heitettävä. Voi tapahtua jos client-koodaaja käyttää rakennetta
+        // suoraan (ja hasNext() - metodin false paluuarvoa ignoraten).
+        if( index + 1 >= size )
+            throw new NoSuchElementException();
+
+        return (T) elements[++index];
+    }
+
+    public boolean hasNext(){
+        // Iteroitavaa jäljellä?
+        return index < size - 1;
+    }
+
+    public void remove(){
+        // Poista nykyinen alkio.
+        remove( index );
+    }
+
+    //// /////////////////////////////////////////
+     // FOR-EACH - KONEISTON MÄÄRITTELY LOPPUU //
+    ///////////////////////////////////////// ////
+
+    boolean add( T element ){
+        if( size == capacity )
+            return false;
+
+        elements[size++] = element;
+        return true;
+    }
+
+    boolean remove( int i ){
+        if( i < 0 || i >= size )
+            return false;
+
+        for( int j = i + 1; j < size; j++ )
+            elements[j - 1] = elements[j];
+
+        elements[--size] = null;
+        return true;
+    }
+
+    public static void main( String... args ){
+        Array<String> spookies = new Array<String>( 10 );
+
+        spookies.add( "Skull" );
+        spookies.add( "Ghost" );
+        spookies.add( "Pelvis" );  // Lantioluut pelottaa!
+        spookies.add( "Zombie");
+        spookies.add( "Skeleton" );
+
+        System.out.print( "Spookies:\n[ ");
+
+        // Helppoa & eleganttia.
+        for( String spooky : spookies )
+            System.out.print( spooky + " " );
+
+        System.out.println( "]" );
+
+        // Iteraattorin remove() - metodin käyttö
+        // valittevasti vaatii rumempaa koodia.
+        Iterator<String> i = spookies.iterator();
+        while( i.hasNext() )
+            if( i.next().compareTo( "Pelvis" ) == 0 )
+                i.remove();
+
+        System.out.print( "\nWithout pelvis:\n[ " );
+
+        for( String spooky : spookies )
+            System.out.print( spooky + " " );
+
+        System.out.println( "]\n" );
+        System.out.println( "All spooky pairs?" );
+
+        // Tässä vaiheessa spookies - rakenteessa on 4 alkiota. Tarkoitus on
+        // että tulostetaan kaikki 16 mahdollista spookyparia. Niitä tulostuu
+        // kuitenkin vain 4 ensimmäistä.
+        //   Tämä siksi, että kun sisäkkäisen silmukan iterointi loppuu,
+        // iteroitavan Array - olion index - muuttujan arvo on kolme. Nyt,
+        // kontrolli palaa "iteroimaan" uloimman silmukan toisen alkion, mutta
+        // index - muuttujan arvo on 3, jolloin hasNext() palauttaa false ja
+        // uloimman silmukan iterointi päättyy. (Yleisesti, kun Array - oliossa
+        // on N alkiota, alla oleva tuplasilmukka iteroi vain N:n ensimmäisen
+        // parin yli N^2:n sijasta.)
+        //   Huomaa, että ongelman tässä aiheuttaa se, että Array - olio on
+        // itsensä iteraattori jolloin kahden eri iteraattorin sijasta ao.
+        // tuplasilmukan molemmissa for:ssa on yksi ja sama iteraattori
+        // käytössä. Pätkässä "Foreach II/II" näytetään miten tämän
+        // rajoituksen yli pääsee käyttämällä sisäkkäisen iteraattoriluokan
+        // olioita.
+        for( String spooky1 : spookies )
+            for( String spooky2 : spookies )
+                System.out.println( "( " + spooky1 + ", " + spooky2 + " )" );
+    }
+}

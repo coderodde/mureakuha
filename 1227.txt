@@ -1,0 +1,192 @@
+package com.mureakuha.util;
+
+/**
+ * A set of indices for multiplex indexing of an array or array-like list. This
+ * implementation relies only on the size of the structure being indexed. A
+ * newly constructed <tt>FuzzyIndexSet</tt> contains only one index, which
+ * equals to zero. While client issues <tt>FuzzyIndexSet.inc()</tt>, that only
+ * index is increased until it reaches the highest index value possible for an
+ * index (derived from <code>arrayLength</code> - argument to the constructor of
+ * an <tt>FuzzyIndexSet</tt>). As the only index has reached the maximum index
+ * value, the following <code>inc()</code> - invocation will add the second
+ * index to the <tt>FuzzyIndexSet</tt> and reset their values to the least
+ * possible (0 and 1 for the first and second index, respectively). In such a
+ * way issuing <tt>FuzzyIndexSet.inc()</tt> will iterate through all <tt>k</tt>-
+ * combinations of indices, where <tt>k</tt> grows from 1 to <code>arrayLength
+ * </code>. Follows that for an array of size <tt>n</tt> there will be
+ * <tt>2^n - 1</tt> index combinations. (Null indexing or "no indices" - case is
+ * not included in this implementation.)
+ *
+ * As to function properly, this implementation caches the size of the array
+ * structure being indexed in the <code>arrayLength</code> - field.
+ *
+ * @author coderodde
+ * @version 2011.11.25
+ */
+public class FuzzyIndexSet {
+
+    /**
+     * Specifies the length of an array indexed by this <tt>FuzzyIndexSet</tt>.
+     * The maximum index value will be derived from this field and will equal
+     * <code>arrayLength - 1</code>.
+     */
+    protected int arrayLength;
+
+    /**
+     * Specifies the amount of indices in this <tt>FuzzyIndexSet</tt>.
+     */
+    protected int indexCount;
+
+    /**
+     * Stores the indices.
+     */
+    protected int[] indices;
+
+    /**
+     * Constructs a new <tt>FuzzyIndexSet</tt> with only one index, set to zero.
+     *
+     * @param arrayLength length of the array structure indexed by this <tt>
+     * FuzzyIndexSet</tt>.
+     * @throws <tt>IllegalArgumentException</tt> if the length of the structure
+     * indexed by newly constructed <tt>FuzzyIndexSet</tt> is less then 1.
+     */
+    public FuzzyIndexSet( int arrayLength ){
+        if( arrayLength < 1 )
+            throw new IllegalArgumentException( "arrayLength < 1" );
+
+        indexCount = 1;
+        this.arrayLength = arrayLength;
+        indices = new int[arrayLength];
+    }
+
+    /**
+     * Increments this <tt>FuzzyIndexSet</tt> to the next index combination. If
+     * all of <code>indexCount</code> - combinations are iterated, this <tt>
+     * FuzzyIndexSet</tt> increments <code>indexCount</code> and sets <code>
+     * indexCount</code> amount of indices to the least consecutive values
+     * possible. (In such a case the values of indices are
+     * <tt>0, 1, ..., indexCount - 1</tt>.)
+     *
+     * @return <code>true</code> if this <tt>FuzzyIndexSet</tt> were incremented,
+     * <code>false</code> if this <tt>FuzzyIndexSet</tt> contains <code>
+     * arrayLength </code> amount of indices and, thus, cannot be incremented.
+     */
+    public boolean inc(){
+        if( indexCount == arrayLength )
+            return false;
+
+        if( indices[indexCount - 1] < arrayLength - 1 )
+        {
+            indices[indexCount - 1]++;
+            return true;
+        }
+
+        for( int i = indexCount - 2; i >= 0; i-- )
+            if( indices[i] <  indices[i + 1] - 1 )
+            {
+                int index = ++indices[i] + 1;
+
+                for( int j = i + 1; j < indexCount; j++, index++ )
+                    indices[j] = index;
+
+                return true;
+            }
+
+        indexCount++;
+        for( int i = 0; i < indexCount; i++ )
+            indices[i] = i;
+
+        return true;
+    }
+
+    /**
+     * Retrieves the current indices of this <tt>FuzzyIndexSet</tt>.
+     *
+     * @return indices of this <tt>FuzzyIndexSet</tt> as an array.
+     */
+    public int[] getIndices(){
+        int[] indexArray = new int[indexCount];
+
+        for( int i = 0; i < indexCount; i++ )
+            indexArray[i] = indices[i];
+
+        return indexArray;
+    }
+
+    /**
+     * Resets this <tt>FuzzyIndexSet</tt> to "the first" index combination.
+     */
+    public void reset(){
+        indexCount = 1;
+        indices[0] = 0;
+    }
+
+    /**
+     * Queries whether there is no gaps between consecutive indices.
+     *
+     * @return <code>true</code> if <code>indices[i] + 1 == indices[i + 1]
+     * </code> for all <code>i = 0, 1, ..., indexCount - 2</code>, <code>false
+     * </code> otherwise.
+     */
+    public boolean hasNoGaps(){
+        for( int i = 0; i < indexCount - 1; i++ )
+            if( indices[i] + 1 != indices[i + 1] )
+                return false;
+
+        return true;
+    }
+
+    /**
+     * Returns the amount of indices in this <tt>FuzzyIndexSet</tt>.
+     *
+     * @return amount of indices in this <tt>FuzzyIndexSet</tt>.
+     */
+    public int size(){
+        return indexCount;
+    }
+
+    /**
+     * Returns the cached length of the array structure being indexed.
+     *
+     * @return cached length of the array structure being indexed.
+     */
+    public int getArrayLength(){
+        return arrayLength;
+    }
+
+    /**
+     * Returns the string representation of this <tt>FuzzyIndexSet</tt>.
+     *
+     * @return string representation of this <tt>FuzzyIndexSet</tt>.
+     */
+    public String toString(){
+        if( indexCount == 0 )
+            return "no indices";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append( "[ " );
+
+        for( int i = 0; i < indexCount - 1; i++ )
+        {
+            sb.append( indices[i] );
+            sb.append( ' ' );
+        }
+
+        sb.append( indices[indexCount - 1] );
+        sb.append( " ]" );
+        
+        return sb.toString();
+    }
+
+    public static void main( String... args ){
+        // Indexing the array of 4 elements; starting from a single index
+        // with value zero.
+        FuzzyIndexSet indexSet = new FuzzyIndexSet( 4 );
+
+        // Print all the possible index combinations.
+        do System.out.println(
+                indexSet + " has no gaps: " + indexSet.hasNoGaps()
+                );
+        while( indexSet.inc() );
+    }
+}

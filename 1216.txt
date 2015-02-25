@@ -1,0 +1,171 @@
+import java.util.Random;
+import java.util.Arrays;
+
+public class Main {
+
+    private final static int CHUNK_SIZE = 8;
+
+    public static <T extends Comparable<T>> void IterativeMergesort( T[] V ){
+        T[] W = null; // W is the backing list (if any needed)
+
+        // nPasses is the amount of merge-passes needed to sort the list
+        int nPasses = (int) Math.ceil(
+                                Math.log( 1.0 * V.length / CHUNK_SIZE ) /
+                                Math.log(2)
+                                );
+
+        // dealing with a very small list ( < CHUNK_SIZE ).
+        // no merge-passes needed
+        if( nPasses < 0 )
+            nPasses = 0;
+
+        // we gonna need a backing list
+        if( nPasses > 0 )
+            W = (T[]) V.clone();
+
+        // the variables for keeping track from which list the elements are to
+        // be taken and in which the merged ones are to be put
+        T[] source;
+        T[] destination;
+
+        // arrange the things so that after sorting the sorted list
+        // resides in the list passed as the argument
+        if( nPasses % 2 == 0 )
+        {
+            source = V;
+            destination = W;
+        }
+        else
+        {
+            source = W;
+            destination = V;
+        }
+
+        // first sort the source list into sorted chunks of size CHUNK_SIZE
+        final int chunks = V.length / CHUNK_SIZE;
+
+        for( int k = 0; k < chunks; k++ )
+        {
+            final int jSup = (k + 1) * CHUNK_SIZE;
+            final int iInf = k * CHUNK_SIZE;
+
+            for( int j = iInf + 1; j < jSup; j++ )
+            {
+                int i = j;
+
+                while( i > iInf && source[i - 1].compareTo( source[i] ) > 0 )
+                {
+                    T t = source[i];
+                    source[i] = source[i - 1];
+                    source[i - 1] = t;
+                    i--;
+                }
+            }
+        }
+
+        final int jSup = V.length;
+        final int iInf = chunks * CHUNK_SIZE;
+
+        // sort the last chunk which isn't of the size CHUNK_SIZE if any
+        for( int j = iInf + 1; j < jSup; j++ )
+        {
+            int i = j;
+
+            while( i > iInf && source[i - 1].compareTo( source[i] ) > 0 )
+            {
+                T t = source[i];
+                source[i] = source[i - 1];
+                source[i - 1] = t;
+                i--;
+            }
+        }
+
+        // proceed to merging the chunks
+        for( int chunkSize = CHUNK_SIZE; chunkSize < V.length; chunkSize *= 2 )
+        {
+            int kChunk;
+
+            for( kChunk = 0; kChunk < V.length / chunkSize; kChunk += 2 )
+            {
+                // the merging code
+                int l = chunkSize * kChunk;
+                int r = chunkSize * (kChunk + 1);
+
+                int i = l;
+
+                int lmax = r - 1;
+                int rmax = r + chunkSize - 1;
+
+                if( rmax >= V.length )
+                    rmax = V.length - 1;
+
+                while( l <= lmax && r <= rmax )
+                    destination[i++] =
+                            source[l].compareTo( source[r] ) <= 0 ?
+                                source[l++] :
+                                source[r++] ;
+
+                while( l <= lmax ) destination[i++] = source[l++];
+                while( r <= rmax ) destination[i++] = source[r++];
+            }
+
+            int i = chunkSize * kChunk;
+
+            // handle the chunk that has no pair chunk to be merged with
+            for(; i < V.length; i++ ) destination[i] = source[i];
+
+            // we have taken the elements from the list code:source and put them
+            // in the list code:destination. Now, merging at higher level, swap
+            // their roles and take the elements for merging from
+            // code:destination (treat it as code:source) and put them in the
+            // other one
+            T[] t = source;
+            source = destination;
+            destination = t;
+        }
+    }
+
+    public static void main(String[] args) {
+        int length = 100000;
+
+        Integer[] list1 = getRandomList( length );
+        Integer[] list2 = (Integer[]) list1.clone();
+
+        long ta, tb;
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        System.out.println( "Arrays.sort() took " + (tb - ta) + " ms." );
+
+        ta = System.currentTimeMillis();
+        IterativeMergesort( list2 );
+        tb = System.currentTimeMillis();
+
+        System.out.println("IterativeMergesort() took " + (tb - ta) + " ms.");
+
+        System.out.println( "Arrays are equal: " + equals( list1, list2 ) );
+    }
+
+    private static Integer[] getRandomList( int length ){
+        Integer[] list = new Integer[ length ];
+        Random r = new Random();
+
+        for( int i = 0; i < length; i++ )
+            list[i] = r.nextInt( length );
+
+        return list;
+    }
+
+    private static <T> boolean equals( T[] l1, T[] l2 ){
+        if( l1.length != l2.length )
+            return false;
+
+        for( int i = 0; i < l1.length; i++ )
+            if( !l1[i].equals( l2[i] ) )
+                return false;
+
+        return true;
+    }
+}

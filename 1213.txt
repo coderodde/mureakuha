@@ -1,0 +1,104 @@
+/******************
+* File: execres.h *
+******************/
+
+#ifndef EXECRES_H
+#define EXECRES_H
+
+#ifdef __GNUC__
+#   include <sys/time.h>
+#elif defined _MSC_VER
+#   include <windows.h>
+#else
+#   error Environment not supported.
+#endif
+
+typedef struct {
+    unsigned long long  millis;
+    void*               result;
+} ExecResult, *PExecResult;
+
+/******************************************************************************
+* Measures the time spent on executing the procedure pointed to by code:code. *
+* param:code the procedure to profile.                                        *
+* param:param generic pointer to the procedure argument.                      *
+* returns: pointer to the ExecResult structure describing the time spent on   *
+*          executing the param:code procedure and the generic pointer to the  *
+*          return value.                                                      *
+******************************************************************************/
+PExecResult execTime( void* (*code)(void*), void* param );
+
+#endif  /* EXECRES_H */
+
+/******************
+* File: execres.c *
+******************/
+
+#include "execres.h"
+#include <stdlib.h>
+
+PExecResult execTime( void* (*code)( void*), void* param ){
+    PExecResult result = (PExecResult) malloc( sizeof(ExecResult) );
+
+#ifdef __GNUC__
+    struct timeval tva;
+    struct timeval tvb;
+#elif defined _MSC_VER
+    DWORD dwa;
+    DWORD dwb;
+#endif
+
+    if( result == NULL || code == NULL ) return NULL;
+
+#ifdef __GNUC__
+    gettimeofday( &tva, NULL );
+    result->result = code( param );
+    gettimeofday( &tvb, NULL );
+
+    result->millis = (unsigned long long)(
+            tvb.tv_sec * 1000 + tvb.tv_usec / 1000 -
+            tva.tv_sec * 1000 - tva.tv_usec / 1000
+            );
+
+#elif defined _MSC_VER
+    dwa = GetTickCount();
+    result->result = code( param );
+    dwb = GetTickCount();
+
+    result->millis = (unsigned long long)( dwb - dwa );
+#endif
+
+    return result;
+}
+
+/***************
+* File: main.c *
+***************/
+
+#include <stdio.h>
+#include "execres.h"
+
+char* PretendToDoImportantWork( char* s ){
+    size_t i;
+
+    for( i = 0; i < 100000000; i++ );
+
+    return s;
+}
+
+int main() {
+    PExecResult result = execTime(
+            PretendToDoImportantWork,
+            (void*) "Hello Cthulhu!"
+            );
+
+    printf(
+            "PretendToDoImportantWork took %u milliseconds and returned"
+            " \"%s\".\n",
+            (unsigned) result->millis,
+            (char*) result->result
+            );
+
+    getchar();
+    return 0;
+}

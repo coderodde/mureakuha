@@ -1,0 +1,293 @@
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+
+public class Main {
+
+    /**
+     * Finds the minimum cost path from <code>source</code> to
+     * </code>goal</code>. This is about the least effective, yet funny,
+     * algorithm, which, unlike Dijkstra's and Bellman-Ford -algorithms, will
+     * return a <i>simple path</i> even if there is a negative-weight cycle on
+     * a path from source to goal.
+     * 
+     * <p>Effectively, it tries every possible simple path from goal to source,
+     * and the best path is reflected in the parent tree.
+     * 
+     * @param source the source node.
+     * @param goal the goal node.
+     * 
+     * @return the minimum cost path from <code>source</code> to
+     * <code>goal</code>, or <code>null</code> if the goal node is unreachable.
+     */
+    static LinkedList<Node> BruteForceShortestPath(
+            Node source,
+            Node goal) {
+        HashMap<Node, Node> parentMap = new HashMap<Node, Node>();
+        parentMap.put(source, null);
+        
+        BruteForceShortestPathImpl(new HashSet<Node>(),
+                                   parentMap, 
+                                   source, 
+                                   goal, 
+                                   0.0,
+                                   Double.POSITIVE_INFINITY);
+        
+        if (parentMap.get(goal) == null) {
+            return null;
+        }
+        
+        LinkedList<Node> path = new LinkedList<Node>();
+        Node current = goal;
+        
+        while (current != null) {
+            path.addFirst(current);
+            current = parentMap.get(current);
+        }
+        
+        return path;
+    }
+    
+    private static double BruteForceShortestPathImpl(
+            HashSet<Node> blackList,
+            HashMap<Node, Node> parentMap,
+            Node current,
+            Node goal,
+            double costFromSource,
+            double bestCostKnown) {
+        if (current == goal) {
+            return costFromSource;
+        }
+        
+        blackList.add(current);
+        double currentCost;
+        
+        for (Node next : current) {
+            if (!blackList.contains(next)) {
+                currentCost = BruteForceShortestPathImpl(
+                        blackList,
+                        parentMap,
+                        next,
+                        goal,
+                        costFromSource + current.getWeight(next),
+                        bestCostKnown
+                        );
+                
+                if (bestCostKnown > currentCost) {
+                    bestCostKnown = currentCost;
+                    parentMap.put(next, current);
+                }
+            }
+        }
+        
+        blackList.remove(current);
+        return bestCostKnown;
+    }
+    
+    public static void printPath(LinkedList<Node> path) {
+        Node prev = null;
+        double totalLength = 0.0;
+        
+        for (Node node : path) {
+            if (prev != null) {
+                totalLength += prev.getWeight(node);
+                System.out.println(prev + " -- " + prev.getWeight(node) 
+                        + " --> " + node);
+            }
+            
+            prev = node;
+        }
+        
+        System.out.println("Total cost: " + totalLength);
+    }
+    
+    public static void main(String[] args) {
+        Node[] graph = new Node[6];
+        
+        graph[0] = new Node("A");
+        graph[1] = new Node("B");
+        graph[2] = new Node("C");
+        graph[3] = new Node("D");
+        graph[4] = new Node("E");
+        graph[5] = new Node("F");
+        
+        /* The first graph:
+         *
+         * +--2.0--B--1.0--D--4.0--E
+         * |               |\
+         * A--3.5--C--3.0--+ +--1.6--F
+         */
+        
+        graph[0].connectTo(graph[1], 2.0);
+        graph[1].connectTo(graph[0], 2.0);
+        graph[0].connectTo(graph[2], 3.5);
+        graph[2].connectTo(graph[0], 3.5);
+        graph[1].connectTo(graph[3], 1.0);
+        graph[3].connectTo(graph[1], 1.0);
+        graph[2].connectTo(graph[3], 3.7);
+        graph[3].connectTo(graph[2], 3.7);
+        graph[3].connectTo(graph[4], 4.0);
+        graph[4].connectTo(graph[3], 4.0);
+        graph[3].connectTo(graph[5], 1.6);
+        graph[5].connectTo(graph[3], 1.6);
+        
+        long ta = System.currentTimeMillis();
+        LinkedList<Node> path = BruteForceShortestPath(graph[0], graph[5]);
+        long tb = System.currentTimeMillis();
+        
+        System.out.println("Time: " + (tb - ta) + " ms.");
+        printPath(path);
+        
+        System.out.println("\nLarger demo:");
+        
+        // (1) Change 4 to 5, and "brute-forceness" will become obvious. :)
+        // (2) Change the cost arguments to their respective inverses
+        // (i.e., -1.0 & -1.414), and see what happens.
+        Node[][] G = getLargerGraph(4, 1.0, 1.414);
+        
+        // Top-left corner node [0, 0].
+        Node source = G[0][0];
+        
+        // [x = 3, y = 2].
+        Node goal = G[2][3];
+        
+        System.out.println("Source: " + source);
+        System.out.println("Goal:   " + goal);
+        
+        ta = System.currentTimeMillis();
+        path = BruteForceShortestPath(source, goal);
+        tb = System.currentTimeMillis();
+        
+        System.out.println("Time: " + (tb - ta) + " ms.");
+        printPath(path);
+    }
+    
+    /**
+     * Generates a "planar grid graph" with dimension N. The graph is as
+     * follows.
+     * 
+     * o-o-...-o
+     * |x|x
+     * o-o-...-o
+     * . .     .
+     * . .     .
+     * . .     .
+     * o-o-...-o
+     * |x|x   x|
+     * o-o-...-o
+     * 
+     * Amount of nodes in vertical and horizontal direction is specified by
+     * argument <code>N</code>. "o" corresponds to a node, and "x" corresponds
+     * to two diagonal edges. The weight (cost) of a horizontal or vertical edge
+     * is 1.0, and the cost of a diagonal edge is 1.414.
+     * 
+     * @param N the dimension of the grid graph.
+     * @param horzVertCost the cost of the vertical and horizontal edges.
+     * @param diagonalCost the cost of the diagonal edges.
+     * 
+     * @return the N x N -grid graph.
+     */
+    private static Node[][] getLargerGraph(final int N,
+                                           final double horzVertCost,
+                                           final double diagonalCost) {
+        Node[][] graph = new Node[N][N];
+        
+        for (int y = 0; y < N; y++) {
+            for (int x = 0; x < N; x++) {
+                graph[y][x] = new Node("[" + x + ", " + y + "]");
+            }
+        }
+        
+        // Horizontal edges.
+        for (int x = 0; x < N - 1; x++) {
+            for (int y = 0; y < N; y++) {
+                graph[y][x].connectTo(graph[y][x + 1], horzVertCost);
+                graph[y][x + 1].connectTo(graph[y][x], horzVertCost);
+            }
+        }
+        
+        // Vertical edges.
+        for (int y = 0; y < N - 1; y++) {
+            for (int x = 0; x < N; x++) {
+                graph[y][x].connectTo(graph[y + 1][x], horzVertCost);
+                graph[y + 1][x].connectTo(graph[y][x], horzVertCost);
+            }
+        }
+        
+        // Diagonal "\"-edges.
+        for (int x = 0; x < N - 1; x++) {
+            for (int y = 0; y < N - 1; y++) {
+                graph[y][x].connectTo(graph[y + 1][x + 1], diagonalCost);
+                graph[y + 1][x + 1].connectTo(graph[y][x], diagonalCost);
+            }
+        }
+        
+        // Diagonal "/"-edges.
+        for (int x = 0; x < N - 1; x++) {
+            for (int y = 1; y < N; y++) {
+                graph[y][x].connectTo(graph[y - 1][x + 1], diagonalCost);
+                graph[y - 1][x + 1].connectTo(graph[y][x], diagonalCost);
+            }
+        }
+        
+        return graph;
+    }
+}
+
+/**
+ * Our node class. Nothing extraordinary.
+ */
+class Node implements Iterable<Node> {
+    /**
+     * The map of (directed) edges.
+     */
+    private HashMap<Node, Double> map;
+    private String name;
+    
+    Node(String name) {
+        this.name = name;
+        map = new HashMap<Node, Double>();
+    }
+    
+    public ChildIterator iterator() {
+        return new ChildIterator();
+    }
+    
+    public String toString() {
+        return name;
+    }
+    
+    void connectTo(Node child, double weight) {
+        if (child == null) {
+            return;
+        }
+        
+        map.put(child, weight);
+    }
+    
+    double getWeight(Node child) {
+        return map.get(child);
+    }
+    
+    class ChildIterator implements Iterator<Node> {
+        private Iterator<Node> iterator;
+        
+        ChildIterator() {
+            iterator = Node.this.map.keySet().iterator();
+        }
+        
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+        
+        public Node next() {
+            return iterator.next();
+        }
+        
+        public void remove() {
+            throw new UnsupportedOperationException("Removing a child node is "
+                    + "not supported.");
+        }
+    }
+}

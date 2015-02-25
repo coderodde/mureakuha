@@ -1,0 +1,709 @@
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Random;
+import java.util.concurrent.Semaphore;
+
+public class Main {
+
+    /**
+     * This is the parallel version for <code>BidirectionalBFS()</code>, which
+     * runs the search in 2 threads: one going backwards from the target, and
+     * one proceeding from the start in forward direction.
+     *
+     * @param V the vertex set.
+     * @param source the source node.
+     * @param target the target node.
+     * @return a shortest path or <code>null</code> if target unreachable from
+     * source.
+     */
+    public static LinkedList<Node> ParallelBidirectionalBFS(
+            ArrayList<Node> V,
+            Node source,
+            Node target
+            )
+    {
+        if (source.equals(target)) {
+            // Special case.
+            LinkedList<Node> path = new LinkedList<Node>();
+            path.addLast(target);
+            return path;
+        }
+
+        HashMap<Node, Node> PARENTA = new HashMap<Node, Node>(V.size(), 1.05f);
+        HashMap<Node, Node> PARENTB = new HashMap<Node, Node>(V.size(), 1.05f);
+
+        // MUTEXA protects the access to PARENTA from threadB, and vice versa.
+        Semaphore MUTEXA = new Semaphore(1, true);
+        Semaphore MUTEXB = new Semaphore(1, true);
+
+        SearchThread threadA = new SearchThread(
+                V.size(),
+                source,
+                PARENTA,
+                PARENTB,
+                MUTEXA,
+                MUTEXB,
+                true
+                );
+
+        SearchThread threadB = new SearchThread(
+                V.size(),
+                target,
+                PARENTB,
+                PARENTA,
+                MUTEXB,
+                MUTEXA,
+                false
+                );
+
+        threadA.start();
+        threadB.start();
+
+        boolean ok = true;
+
+        try {
+            threadA.join();
+            threadB.join();
+        } catch (InterruptedException e) {
+            ok = false;
+        }
+
+        if (ok) {
+            // Build path.
+            return BBFSConstructPath(
+                    threadA.getLevelSet(),
+                    threadB.getLevelSet(),
+                    threadA.getDistanceMap(),
+                    threadB.getDistanceMap(),
+                    PARENTA,
+                    PARENTB
+                    );
+        }
+
+        return null;
+    }
+
+    private static class SearchThread extends Thread {
+        private Node from;
+        private HashSet<Node> level;
+        private HashMap<Node, Integer> distanceMap;
+        private HashMap<Node, Node> parentMap;
+        private HashMap<Node, Node> parentMapOther;
+        private Semaphore mutex;
+        private Semaphore mutexOther;
+        private boolean forward;
+
+        SearchThread(int capacity,
+                     Node from,
+                     HashMap<Node, Node> parentMap,
+                     HashMap<Node, Node> parentMapOther,
+                     Semaphore mutex,
+                     Semaphore mutexOther,
+                     boolean forward) {
+            this.from = from;
+            this.parentMap = parentMap;
+            this.parentMapOther = parentMapOther;
+            this.mutex = mutex;
+            this.mutexOther = mutexOther;
+            this.forward = forward;
+            level = new HashSet<Node>(capacity, 1.05f);
+            distanceMap = new HashMap<Node, Integer>(capacity, 1.05f);
+        }
+
+        public void run() {
+            parentMap.put(from, null);
+            distanceMap.put(from, 0);
+
+            Node last = from;
+            LinkedList<Node> queue = new LinkedList<Node>();
+
+            // Forward search start from the source node, the reverse search
+            // proceeds from target "backwards".
+            // Stops when the two "search balls" meet.
+            queue.addLast(from);
+
+            if (forward) {
+                while (queue.size() > 0) {
+                    Node current = queue.getFirst();
+
+                    // For each child of current, do...
+                    for (Node child : current) {
+                        if (!parentMap.containsKey(child)) {
+                            queue.addLast(child);
+
+                            mutex.acquireUninterruptibly();
+                            parentMap.put(child, current);
+                            mutex.release();
+
+                            level.add(child);
+                            distanceMap.put(child,
+                                            distanceMap.get(current) + 1);
+                        }
+                    }
+
+                    if (current.equals(last)) {
+                        last = queue.getLast();
+
+                        mutexOther.acquireUninterruptibly();
+
+                        if (!Collections.disjoint(level,
+                                                  parentMapOther.keySet())) {
+                            mutexOther.release();
+                            return;
+                        }
+
+                        mutexOther.release();
+
+                        level.clear();
+                    }
+
+                    queue.removeFirst();
+                }
+            } else {
+                while (queue.size() > 0) {
+                    Node current = queue.getFirst();
+
+                    // For each parent of current, do...
+                    for (Iterator<Node> parentIterator =
+                            current.parentIterator();
+                            parentIterator.hasNext();) {
+                        Node parent = parentIterator.next();
+
+                        if (!parentMap.containsKey(parent)) {
+                            queue.addLast(parent);
+
+                            mutex.acquireUninterruptibly();
+                            parentMap.put(parent, current);
+                            mutex.release();
+
+                            level.add(parent);
+                            distanceMap.put(parent,
+                                            distanceMap.get(current) + 1);
+                        }
+                    }
+
+                    if (current.equals(last)) {
+                        last = queue.getLast();
+
+                        mutexOther.acquireUninterruptibly();
+
+                        if (!Collections.disjoint(level,
+                                                  parentMapOther.keySet())) {
+                            mutexOther.release();
+                            return;
+                        }
+
+                        mutexOther.release();
+
+                        level.clear();
+                    }
+
+                    queue.removeFirst();
+                }
+            }
+        }
+
+        HashSet<Node> getLevelSet() {
+            return level;
+        }
+
+        HashMap<Node, Integer> getDistanceMap() {
+            return distanceMap;
+        }
+    }
+
+    /**
+     * A bidirectional breadth-first search searching for a shortest path from
+     * source to target in an unweighted graph.
+     *
+     * @param V the node set.
+     * @param source the source node.
+     * @param target the target node.
+     *
+     * @return a shortest path or <code>null</code> if target unreachable from
+     * source.
+     */
+    public static LinkedList<Node> BidirectionalBFS(
+            ArrayList<Node> V,
+            Node source,
+            Node target
+            )
+    {
+        if (source.equals(target)) {
+            LinkedList<Node> path = new LinkedList<Node>();
+            path.add(target);
+            return path;
+        }
+
+        HashSet<Node> LEVELA = new HashSet<Node>(V.size(), 1.05f);
+        HashSet<Node> LEVELB = new HashSet<Node>(V.size(), 1.05f);
+        HashMap<Node, Node> PARENTA = new HashMap<Node, Node>(V.size(), 1.05f);
+        HashMap<Node, Node> PARENTB = new HashMap<Node, Node>(V.size(), 1.05f);
+
+        HashMap<Node, Integer> DISTANCEA =
+                new HashMap<Node, Integer>(V.size(), 1.05f);
+        HashMap<Node, Integer> DISTANCEB =
+                new HashMap<Node, Integer>(V.size(), 1.05f);
+
+        LinkedList<Node> QUEUEA = new LinkedList<Node>();
+        LinkedList<Node> QUEUEB = new LinkedList<Node>();
+
+        boolean completeA = false;
+        boolean completeB = false;
+
+        Node LASTA = source;
+        Node LASTB = target;
+
+        PARENTA.put(source, null);
+        PARENTB.put(target, null);
+
+        DISTANCEA.put(source, 0);
+        DISTANCEB.put(target, 0);
+
+        QUEUEA.addLast(source);
+        QUEUEB.addLast(target);
+
+        while (QUEUEA.size() * QUEUEB.size() > 0) {
+            // Expand A.
+            Node A = QUEUEA.getFirst();
+
+            if (completeA || (LASTA.equals(A)
+                    && !Collections.disjoint(LEVELA, PARENTB.keySet()))) {
+                completeA = true;
+
+                if (completeB) {
+                    return BBFSConstructPath(
+                            LEVELA,
+                            LEVELB,
+                            DISTANCEA,
+                            DISTANCEB,
+                            PARENTA,
+                            PARENTB
+                            );
+                }
+            } else {
+                QUEUEA.removeFirst();
+                // For each child of A, do...
+                for (Node child : A) {
+                    if (!PARENTA.containsKey(child)) {
+                        LEVELA.add(child);
+                        QUEUEA.addLast(child);
+                        PARENTA.put(child, A);
+                        DISTANCEA.put(child, DISTANCEA.get(A) + 1);
+                    }
+                }
+
+                if (LASTA.equals(A) && QUEUEA.size() > 0) {
+                    // Set new level tail.
+                    LASTA = QUEUEA.getLast();
+                    // Forget the recently completed level.
+                    LEVELA.clear();
+                }
+            }
+
+            // Expand B.
+            Node B = QUEUEB.getFirst();
+
+            if (completeB || (LASTB.equals(B)
+                    && !Collections.disjoint(LEVELB, PARENTA.keySet()))) {
+                completeB = true;
+
+                if (completeA) {
+                    return BBFSConstructPath(
+                            LEVELA,
+                            LEVELB,
+                            DISTANCEA,
+                            DISTANCEB,
+                            PARENTA,
+                            PARENTB
+                            );
+                }
+            } else {
+                QUEUEB.removeFirst();
+                Iterator<Node> pi = B.parentIterator();
+
+                // For each parent of B, do...
+                while (pi.hasNext()) {
+                    Node parent = pi.next();
+
+                    if (!PARENTB.containsKey(parent)) {
+                        LEVELB.add(parent);
+                        QUEUEB.addLast(parent);
+                        PARENTB.put(parent, B);
+                        DISTANCEB.put(parent, DISTANCEB.get(B) + 1);
+                    }
+                }
+
+                if (LASTB.equals(B) && QUEUEB.size() > 0) {
+                    LASTB = QUEUEB.getLast();
+                    LEVELB.clear();
+                }
+            }
+        }
+
+        // Target unreachable from source.
+        return null;
+    }
+
+    /**
+     * Constructs a shortest path. The shortest path is not necessarily unique.
+     *
+     * @param LEVELA the outermost level of set A.
+     * @param LEVELB the outermost level of set B.
+     * @param DISTANCEA the distance map for set A.
+     * @param DISTANCEB the distance map for set B.
+     * @param PARENTA the parent map for set A.
+     * @param PARENTB the parent map for set B.
+     *
+     * @return the shortest path.
+     */
+    private static LinkedList<Node> BBFSConstructPath(
+            HashSet<Node> LEVELA,
+            HashSet<Node> LEVELB,
+            HashMap<Node, Integer> DISTANCEA,
+            HashMap<Node, Integer> DISTANCEB,
+            HashMap<Node, Node> PARENTA,
+            HashMap<Node, Node> PARENTB
+            )
+    {
+        LinkedList<Node> path = new LinkedList<Node>();
+        Integer tmp;
+        Node touchNode = null;
+        int minDistance = Integer.MAX_VALUE;
+
+        // In the next 2 loops, determine the "set touch node".
+        for (Node node : LEVELA) {
+            if ((tmp = DISTANCEB.get(node)) != null
+                    && minDistance > tmp + DISTANCEA.get(node)) {
+                minDistance = tmp + DISTANCEA.get(node);
+                touchNode = node;
+            }
+        }
+
+        for (Node node : LEVELB) {
+            if ((tmp = DISTANCEA.get(node)) != null
+                    && minDistance > tmp + DISTANCEB.get(node)) {
+                minDistance = tmp + DISTANCEB.get(node);
+                touchNode = node;
+            }
+        }
+
+        // Construct a shortest path.
+        Node current = touchNode;
+
+        while (current != null) {
+            path.addFirst(current);
+            current = PARENTA.get(current);
+        }
+
+        current = PARENTB.get(touchNode);
+
+        while (current != null) {
+            path.addLast(current);
+            current = PARENTB.get(current);
+        }
+
+        return path;
+    }
+
+    /**
+     * Good old breadth-first search searching for a shortest path from source
+     * to target.
+     *
+     * @param G the graph.
+     * @param source the source node.
+     * @param target the target node.
+     * @return a shortest path or <code>null</code> if target unreachable from
+     * source.
+     */
+    public static LinkedList<Node> TraditionalBFS(
+            ArrayList<Node> G,
+            Node source,
+            Node target
+            )
+    {
+        HashMap<Node, Node> parentMap =
+                new HashMap<Node, Node>(G.size(), 1.05f);
+        HashSet<Node> visitedSet = new HashSet<Node>(G.size(), 1.05f);
+        LinkedList<Node> queue = new LinkedList<Node>();
+
+        parentMap.put(source, null);
+        visitedSet.add(source);
+        queue.addLast(source);
+
+        while (queue.size() > 0) {
+            Node node = queue.removeFirst();
+
+            if (node.equals(target)) {
+                LinkedList<Node> path = new LinkedList<Node>();
+                Node current = node;
+
+                while (current != null) {
+                    path.addFirst(current);
+                    current = parentMap.get(current);
+                }
+
+                return path;
+            }
+
+            // For each child, do...
+            for (Node child : node) {
+                if (!visitedSet.contains(child)) {
+                    visitedSet.add(child);
+                    queue.addLast(child);
+                    parentMap.put(child, node);
+                }
+            }
+        }
+
+        // Target not reachable.
+        return null;
+    }
+
+    /**
+     * Our node class for the directed, unweighted graphs.
+     */
+    public static class Node implements Iterable<Node> {
+        private ArrayList<Node> inAdjacencyList;
+        private ArrayList<Node> outAdjacencyList;
+        private int id;
+        private int x;
+        private int y;
+
+        public Node(int id, int x, int y) {
+            this.id = id;
+            this.x = x;
+            this.y = y;
+            inAdjacencyList = new ArrayList<Node>();
+            outAdjacencyList = new ArrayList<Node>();
+        }
+
+        public double getDistanceTo(Node other) {
+            int dx = this.x - other.x;
+            int dy = this.y - other.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        /**
+         * Creates the edge (this, child).
+         *
+         * @param child the child node to which the directed edge points.
+         */
+        public void addChild(Node child) {
+            this.outAdjacencyList.add(child);
+            child.inAdjacencyList.add(this);
+        }
+
+        /**
+         * Gets the child iterator of this Node.
+         *
+         * @return the child iterator.
+         */
+        public Iterator<Node> iterator() {
+            return new ChildIterator();
+        }
+
+        /**
+         * Gets the parent iterator of this Node. Used by the bidirectional
+         * BFS.
+         *
+         * @return the parent iterator.
+         */
+        public Iterator<Node> parentIterator() {
+            return new ParentIterator();
+        }
+
+        public String toString() {
+            return "[Node id: " + id + "]";
+        }
+
+        /**
+         * This class models an iterator over a Node's children.
+         */
+        private class ChildIterator implements Iterator<Node> {
+            private Iterator<Node> iterator;
+
+            ChildIterator() {
+                this.iterator = Node.this.outAdjacencyList.iterator();
+            }
+
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+
+            public Node next() {
+                return iterator.next();
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException(
+                        "remove() not supported."
+                        );
+            }
+        }
+
+        /**
+         * This class models an iterator over a Node's parents.
+         */
+        private class ParentIterator implements Iterator<Node> {
+            private Iterator<Node> iterator;
+
+            ParentIterator() {
+                this.iterator = Node.this.inAdjacencyList.iterator();
+            }
+
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+
+            public Node next() {
+                return iterator.next();
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException(
+                        "remove() not supported."
+                        );
+            }
+        }
+    }
+
+    /**
+     * The entry point for demo.
+     *
+     * @param args ignored.
+     */
+    public static void main(String[] args) {
+        final int N = 20000;
+        ArrayList<Node> G = getRandomGraph(N, 212L, 1.0f);
+
+        Node source = getNearestToOrigo(G);
+        Node target = getFurthestFromOrigo(G);
+
+        System.out.println("Source: " + source);
+        System.out.println("Target: " + target);
+        System.out.println();
+
+        long ta = System.currentTimeMillis();
+        LinkedList<Node> path1 = TraditionalBFS(G, source, target);
+        long tb = System.currentTimeMillis();
+
+        System.out.println("TraditionalBFS(): time: " + (tb - ta)
+                + " ms, shortest path length: " + (path1.size() - 1));
+
+        ta = System.currentTimeMillis();
+        LinkedList<Node> path2 = BidirectionalBFS(G, source, target);
+        tb = System.currentTimeMillis();
+
+        System.out.println("BidirectionalBFS(): time: " + (tb - ta)
+                + " ms, shortest path length: " + (path2.size() - 1));
+
+        ta = System.currentTimeMillis();
+        LinkedList<Node> path3 = ParallelBidirectionalBFS(G, source, target);
+        tb = System.currentTimeMillis();
+
+        System.out.println("ParallelBidirectionalBFS(): time: " + (tb - ta)
+                + " ms; shortest path length: " + (path3.size() - 1));
+
+        if (path1 == null) {
+            path1 = new LinkedList<Node>();
+        }
+
+        if (path2 == null) {
+            path2 = new LinkedList<Node>();
+        }
+
+        if (path3 == null) {
+            path3 = new LinkedList<Node>();
+        }
+
+        if (path1.size() == path2.size() && path2.size() == path3.size()) {
+            System.out.println("\nPaths:");
+            System.out.println("Traditional BFS   | Bidirectional BFS | "
+                    + "Parallel BBFS");
+
+            for (int i = 0; i < path1.size(); i++) {
+                System.out.printf(
+                        "%-17s | %-17s | %s",
+                        path1.get(i),
+                        path2.get(i),
+                        path3.get(i)
+                        );
+
+                System.out.println();
+            }
+        } else {
+            System.out.println(
+                    "This should not be printed. Naughty implementation."
+                    );
+        }
+    }
+
+    /**
+     * Constructs a random directed, unweighted graph.
+     *
+     * @param size the node amount.
+     * @param seed the seed for the PRNG.
+     * @param loadFactor the edge load factor in the range [0, 1].
+     *
+     * @return a randomly built graph.
+     */
+    public static ArrayList<Node> getRandomGraph(
+            int size,
+            long seed,
+            float loadFactor
+            )
+    {
+        ArrayList<Node> G = new ArrayList<Node>(size);
+        Random r = new Random(seed);
+
+        for (int i = 0; i < size; i++) {
+            G.add(new Node(i, r.nextInt(1001), r.nextInt(1001)));
+        }
+
+        for (int i = 0; i < size; i++) {
+            for (int j = 0; j < size; j++) {
+                if (r.nextFloat() < loadFactor
+                        && G.get(i).getDistanceTo(G.get(j)) < 200.0) {
+                    G.get(i).addChild(G.get(j));
+                }
+            }
+        }
+
+        return G;
+    }
+
+    private static Node getNearestToOrigo(ArrayList<Node> V) {
+        double d = Double.POSITIVE_INFINITY;
+        Node nearest = null;
+        Node origo = new Node(0, 0, 0);
+
+        for (Node node : V) {
+            if (d > node.getDistanceTo(origo)) {
+                d = node.getDistanceTo(origo);
+                nearest = node;
+            }
+        }
+
+        return nearest;
+    }
+
+    private static Node getFurthestFromOrigo(ArrayList<Node> V) {
+        double d = -1.0;
+        Node furthest = null;
+        Node origo = new Node(0, 0, 0);
+
+        for (Node node : V) {
+            if (d < node.getDistanceTo(origo)) {
+                d = node.getDistanceTo(origo);
+                furthest = node;
+            }
+        }
+
+        return furthest;
+    }
+}

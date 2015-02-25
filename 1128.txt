@@ -1,0 +1,144 @@
+#include <stdio.h>
+#define isCalledFrom(n) ( (void*)(n) == calledFrom() )
+#define _NAKED_
+
+void foo();
+void bar();
+void baz();
+
+/*
+*   calledFrom() - kutsujan selvittelyfunktio
+*
+*   Olkoot foo() ja bar() sellaiset ei-inline funktiot, että foo kutsuu bar:n
+*   ja bar puolestaan kutsuu calledFrom:n. Tällöin calledFrom palauttaa
+*   foo:n (bar:n kutsujan) osoitteen.
+*   
+*   Käyttö:
+*   void bar(){
+*       ...
+*       if(isCalledFrom( main )){
+*           ... // tee asialle jtn
+*       }
+*       ...
+*   }
+*
+*   PINOKEHYS
+*     sisältö           osoite
+*   ______________________________
+*   | paluuosoite  |    ebp + 0x4
+*   | kutsujan ebp |    ebp
+*
+*   KUTSUKOODI - tähän tähdätään
+*   n:      call foo:   E8/FF XX XX XX XX   <- XX.. foo:n osoite.
+*                                              absoluuttinen, jos FF
+*                                              suhteellinen, jos E8
+*   n+5:    mov ... :   ??                  <- n+5 = foo:n paluuosoite
+*
+*/
+
+#ifdef _NAKED_
+__declspec(naked)
+#endif
+
+void* calledFrom(){
+
+// bar:n ebp talteen
+#ifdef _NAKED_
+    __asm mov eax, ebp;
+#else
+    __asm mov eax, [ebp];
+#endif
+
+    __asm {
+        mov eax, [eax]          ; foo:n ebp
+        mov eax, [eax + 4]      ; foo:n paluuosoite
+        mov edx, eax            ; kopiota saatetaan tarvita
+
+        sub eax, 5              ; call foo - käskyn osoite
+        mov bl, [eax]           ; call:n opcode talteen
+        inc eax                 ; eax siirtyy osoittamaan foo:n osoitetta
+                                ; call-käskyn yhteydessä
+        mov eax, [eax]          ; absoluuttinen/suhteellinen siirtymä talteen
+
+        cmp bl, 0xE8
+        je RelationalAddress    ; osoite on suhteellinen
+
+        cmp bl, 0xFF
+        je Exit	                ; absoluuttinen, helppo nakki
+        jmp Abort               
+
+RelationalAddress:
+        add eax, edx
+        jmp Exit
+       
+Abort:
+        mov eax, 0
+Exit:                           ; eax sisältää foo:n osoitteen tai nollan.
+                                ; C-kääntäjä välittää funktioiden arvot sen kautta
+                                ; joten mitään return-lausetta ei tarvita
+    }
+
+// oma epilogi
+#ifdef _NAKED_
+    __asm ret;
+#endif
+}
+
+int main(){
+    printf(
+        "main:\t0x%08X\n"
+        "foo: \t0x%08X\n"
+        "bar: \t0x%08X\n"
+        "baz: \t0x%08X\n"
+        "\n",
+        main,
+        foo,
+        bar,
+        baz
+    );
+
+    foo();
+    bar();
+    baz();
+
+    getchar();
+    return 0;
+}
+
+void foo(){    
+    printf(
+        "This is foo:\n"
+        "called from 0x%08X\n"
+        "that is, from ",
+        calledFrom()
+    );
+
+    if(isCalledFrom( main ))
+        puts("main.\n");
+    else if(isCalledFrom( bar ))
+        puts("bar.\n");
+    else
+        puts("somewhere else.\n");
+}
+
+void bar(){
+    printf(
+        "This is bar:\n"
+        "called from 0x%08X\n"
+        "\n",
+        calledFrom()
+    );
+
+    foo(); 
+}
+
+void baz(){
+    printf(
+        "This is baz:\n"
+        "called from 0x%08X\n"
+        "\n",
+        calledFrom()
+    );
+    
+   foo();
+}

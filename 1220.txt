@@ -1,0 +1,1608 @@
+import java.awt.Font;
+import java.awt.Color;
+import java.awt.Point;
+import java.awt.Canvas;
+import java.awt.Toolkit;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+
+import java.util.Random;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedList;
+
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+
+import java.awt.event.KeyEvent;
+import java.awt.event.FocusEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.FocusListener;
+
+import java.awt.FontMetrics;
+import java.awt.font.LineMetrics;
+import java.awt.image.BufferedImage;
+
+public class PacManFrame extends JFrame
+        implements KeyListener, FocusListener {
+
+    protected enum Direction {
+        NORTH,
+        EAST,
+        SOUTH,
+        WEST
+    }
+
+    protected static class Ghost {
+        Point location;
+        Point target;
+        long exitChamberAt;
+        boolean eatable;
+        boolean show = true;
+        boolean slowDownAtEvenCycle;
+        Color color;
+    }
+
+    protected static class PacMan {
+        boolean eaten;
+        Point location;
+        Direction direction;
+    }
+
+    protected class MazeCanvas extends Canvas {
+        static final int CHARACTER_WIDTH = 8;
+        static final int CHARACTER_HEIGHT = 13;
+
+        char[][] maze;
+        PacMan pacman;
+        Ghost[] ghosts;
+
+        BufferedImage backBuffer;
+        Font monospaced;
+
+        /** Luo uuden MazeCanvas:n.
+         * @param dim kuvapuskurin leveys ja korkeus
+         */
+        public MazeCanvas( Dimension dim ){
+            backBuffer = new BufferedImage(
+                    dim.width,
+                    dim.height,
+                    BufferedImage.TYPE_INT_RGB
+                    );
+
+            monospaced = new Font( "Monospaced", Font.BOLD, 13 );
+        }
+
+        /** Palauttaa yhden merkin korkeuden pikseleissä.
+         * @return merkin korkeus
+         */
+        int getCharacterHeight(){
+            Graphics2D g = (Graphics2D) backBuffer.getGraphics();
+
+            if( g == null )
+                return CHARACTER_HEIGHT;
+
+            LineMetrics metrics = monospaced.getLineMetrics(
+                    "H",
+                    g.getFontRenderContext()
+                    );
+
+            return (int) Math.floor( metrics.getHeight() );
+        }
+
+        /** Palauttaa yhden merkin leveyden pikseleissä.
+         * @return merkin leveys
+         */
+        int getCharacterWidth(){
+            Graphics g = backBuffer.getGraphics();
+
+            if( g == null )
+                return CHARACTER_WIDTH;
+
+            FontMetrics metrics = g.getFontMetrics(monospaced);
+            return metrics.getMaxAdvance();
+        }
+
+        /** Piirtää komponentin graafikat.
+         * @param g
+         */
+        public void paint( Graphics g ){
+            update( g );
+        }
+
+        /** Piirtää graafikat kuvapuskuriin. */
+        void paintBuffer(){
+            Graphics2D g = (Graphics2D) backBuffer.getGraphics();
+
+            g.setFont( monospaced );
+            // pyyhitään canvas
+            g.setBackground( Color.black );
+            g.clearRect( 0, 0, getWidth(), getHeight() );
+
+            int characterHeight = getCharacterHeight();
+            int characterWidth = getCharacterWidth();
+
+            Point p = new Point();
+
+            for( int py = 0, y = characterHeight;
+                 py < NY;
+                 py++, y += characterHeight
+            )
+            {
+                p.y = py;
+
+                second:
+                for( int px = 0, x = 0;
+                     px < NX;
+                     px++, x += characterWidth
+                )
+                {
+                    p.x = px;
+                    g.setColor( Color.yellow );
+
+                    // piirretään PacMan
+                    if( pacman.location.equals(p) )
+                    {
+                        if( pacman.eaten )
+                        {
+                            g.drawString( "X", x, y );
+                            continue;
+                        }
+
+                        if( pacman.direction == null )
+                        {
+                            g.drawString( "O", x, y );
+                            continue;
+                        }
+
+                        switch( pacman.direction )
+                        {
+                            case NORTH:
+                                g.drawString( "v", x, y );
+                                continue;
+
+                            case EAST:
+                                g.drawString( "<", x, y );
+                                continue;
+
+                            case SOUTH:
+                                g.drawString( "\u039B", x, y );
+                                continue;
+
+                            case WEST:
+                                g.drawString( ">", x, y );
+                                continue;
+                        }
+                    }
+
+                    // piirretään mörkö (jos jokin on
+                    // meneillä olevassa pisteessä)
+                    for( int i = 0; i < NGHOSTS; i++ )
+                        if( ghosts[i].location.equals(p) )
+                        {
+                            if( ghosts[i].eatable )
+                            {
+                                g.setColor( eatableGhostColor );
+                                
+                                if( System.currentTimeMillis() >=
+                                        feastEndsAt - 3000L
+                                )
+                                {
+                                    // aterioinnin viimeiset 3 sekuntia ovat
+                                    // meneillään, piirretään syötävät mörköt
+                                    // vain joka toinen sykli
+                                    if( ghosts[i].show )
+                                    {
+                                        g.drawString( "@", x, y );
+                                        ghosts[i].show = false;
+                                    }
+                                    else
+                                    {
+                                        g.drawString( "" + maze[py][px], x, y );
+                                        ghosts[i].show = true;
+                                    }
+                                }
+                                else
+                                    g.drawString( "@", x, y );
+                            }
+                            else
+                            {
+                                g.setColor( ghosts[i].color );
+                                g.drawString( "@", x, y );
+                            }
+
+                            continue second;
+                        }
+
+                    // meneillään oleva labyrintin piste ei ole mörkö eikä PacMan,
+                    // piirretään siis labyrintin piste
+                    switch( maze[py][px] )
+                    {
+                        case '#':
+                            g.setColor( Color.blue );
+                            g.drawString( "#", x, y );
+                            break;
+
+                        case '.':
+                            g.setColor( Color.white );
+                            g.drawString( ".", x, y );
+                            break;
+
+                        case 'o':
+                            g.setColor( Color.pink );
+                            g.drawString( "o", x, y );
+                            break;
+
+                        // tapausta ' ' (väli) ei tarvitse piirtää
+                    }
+                }
+            }
+        }
+
+        /** Asettaa piirtämisessä tarvittavat tiedot.
+         * @param maze merkkilabyrintti
+         * @param pacman pacman-olio
+         * @param ghosts taulukko mörköjä
+         */
+        void setInfo(
+                char[][] maze,
+                PacMan pacman,
+                Ghost[] ghosts ){
+            this.maze = maze;
+            this.pacman = pacman;
+            this.ghosts = ghosts;
+        }
+
+        /** Päivittää komponentin graafikat.
+         * @param g
+         */
+        public void update( Graphics g ){
+            paintBuffer();
+            g.drawImage( backBuffer, 0, 0, this );
+        }
+    }
+
+    protected final static int NY = 31;
+    protected final static int NX = 28;
+    protected final static int NGHOSTS = 4;
+
+    protected MazeCanvas canvas;
+    protected char[][] maze;
+
+    protected int score;
+    protected int berries;
+    protected int maxBerries;
+    protected int ghostsEaten;
+
+    protected int cycleID;
+
+    // AWT:n säikeet päivittävät nämä kentät, siksi volatile
+    protected volatile Direction typedDirection;
+    protected volatile boolean focusLost;
+    protected volatile boolean pauseRequested;
+
+    protected long feastEndsAt;
+
+    protected PacMan pacman;
+    protected Ghost[] ghosts;
+
+    protected Color eatableGhostColor;
+
+    public PacManFrame(){
+        buildGUI();
+
+        pacman = new PacMan();
+        ghosts = new Ghost[NGHOSTS];
+
+        for( int i = 0; i < NGHOSTS; i++ )
+            ghosts[i] = new Ghost();
+
+        setupGhostColors();
+        initGame();
+        adjustFrameToText();
+        centerFrame();
+        setVisible( true );
+
+        // aloitetaan pelisilmukka
+        play();
+    }
+
+    /** Aseta freimin kooksi tekstilabyrintin koon. */
+    protected void adjustFrameToText(){
+        int charWidth = canvas.getCharacterWidth();
+        int charHeight = canvas.getCharacterHeight();
+
+        Dimension d = new Dimension( charWidth * NX, charHeight * (NY + 2) );
+        setSize( d );
+    }
+
+    /** Laskee BFS-puun, josta selviää lyhimmät polut kaikkiin
+     * saavutettaviin pisteisiin.
+     *
+     * @param ghost mörkö, jonka sijainnista lähtien BFS-puu lasketaan
+     * @return BFS-puu
+     */
+    protected HashMap<Point, Point> breadthFirstSearch( Ghost ghost ){
+        HashMap<Point, Point> parentTree = new HashMap<Point, Point>( NX * NY );
+        boolean[][] visited = new boolean[NY][NX];
+        LinkedList<Point> Q = new LinkedList<Point>();
+
+        Point location = new Point( ghost.location );
+        parentTree.put( location, null );
+        visited[location.y][location.x] = true;
+        Q.addLast( location );
+
+        while( !Q.isEmpty() )
+        {
+            Point parent = Q.removeFirst();
+
+            if( parent.y == 14 && parent.x == 0 )
+            {
+                boolean occupied = false;
+                Point adj = new Point( NX - 1, 14 );
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !(visited[adj.y][adj.x] || occupied) )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+
+                adj = new Point( 1, 14 );
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !(visited[adj.y][adj.x] || occupied) )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+            }
+            else if( parent.y == 14 && parent.x == NX - 1 )
+            {
+                boolean occupied = false;
+                Point adj = new Point( 0, 14 );
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !(visited[adj.y][adj.x] || occupied) )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+
+                adj = new Point( NX - 2, 14 );
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !(visited[adj.y][adj.x] || occupied) )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+            }
+            else {
+                Point adj = new Point( parent.x, parent.y - 1 );
+                boolean occupied = false;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !( maze[adj.y][adj.x] == '#' ||
+                       visited[adj.y][adj.x] || occupied)
+                )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+
+                adj = new Point( parent.x + 1, parent.y );
+                occupied = false;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !( maze[adj.y][adj.x] == '#' ||
+                       visited[adj.y][adj.x] || occupied)
+                )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+
+                adj = new Point( parent.x, parent.y + 1 );
+                occupied = false;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !( maze[adj.y][adj.x] == '#' ||
+                       visited[adj.y][adj.x] || occupied)
+                )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+
+                adj = new Point( parent.x - 1, parent.y );
+                occupied = false;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                    if( ghosts[i] != ghost && ghosts[i].location.equals(adj) )
+                    {
+                        occupied = true;
+                        break;
+                    }
+
+                if( !( maze[adj.y][adj.x] == '#' ||
+                       visited[adj.y][adj.x] || occupied)
+                )
+                {
+                    visited[adj.y][adj.x] = true;
+                    parentTree.put( adj, parent );
+                    Q.addLast( adj );
+                }
+            }
+        }
+
+        return parentTree;
+    }
+
+    /** Rakentaa GUI-komponentit. */
+    protected void buildGUI(){
+        Dimension dimension = new Dimension( 700, 700 );
+        setPreferredSize( dimension );
+        setDefaultCloseOperation( EXIT_ON_CLOSE );
+        setTitle( "coderodde's PacMan" );
+        setResizable( false );
+
+        canvas = new MazeCanvas( dimension );
+        getContentPane().add( canvas );
+        pack();
+
+        canvas.addKeyListener( this );
+        // siltä varalta, jos freimi saa jotenkin fokuksen textArea:lta
+        addKeyListener( this );
+
+        // pelin keskeyttämistä varten: jos canvas menettää fokuksen,
+        // peli jää odotamaan kunnes textArea saa fokuksensa takaisin
+        canvas.addFocusListener( this );
+    }
+
+    /** Rakentaa labyrintin. Älä muuta tätä sillä jotkin metodit (esim.
+     breadthFirstSearch) tekevät olettamuksia labyrintin rakenteen suhteen. */
+    protected void buildMaze(){
+        if( maze == null )
+            maze = new char[NY][NX];
+
+        for( int y = 0; y < NY; y++ )
+            maze[y][0] =
+            maze[y][NX - 1] = '#';
+
+        for( int x = 1; x < NX - 1; x++ )
+            maze[0][x] =
+            maze[NY - 1][x] = '#';
+
+        for( int x = 1; x < NX - 1; x++ )
+            for( int y = 1; y < NY - 1; y++ )
+                maze[y][x] = '.';
+
+        for( int x = 2; x <= 5; x++ )
+            for( int y = 2; y <= 4; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 7; x <= 11; x++ )
+            for( int y = 2; y <= 4; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 13; x <= 14; x++ )
+            for( int y = 1; y <= 4; y++ )
+                maze[y][x] = '#';
+
+        for( int x = 2; x <= 5; x++ )
+            for( int y = 6; y <= 7; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 1; x <= 5; x++ )
+            for( int y = 9; y <= 13; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 0; x <= 5; x++ )
+            maze[14][NX - 1 - x] =
+            maze[14][x] = ' ';
+
+        for( int x = 1; x <= 5; x++ )
+            for( int y = 15; y <= 19; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 2; x <= 5; x++ )
+            for( int y = 21; y <= 22; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 4; x <= 5; x++ )
+            for( int y = 23; y <= 25; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 1; x <= 2; x++ )
+            for( int y = 24; y <= 25; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 2; x <= 11; x++ )
+            for( int y = 27; y <= 28; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 13; x <= 14; x++ )
+            for( int y = 26; y <= 28; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 7; x <= 8; x++ )
+            for( int y = 24; y <= 26; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 10; x <= 17; x++ )
+            for( int y = 24; y <= 25; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 13; x <= 14; x++ )
+            for( int y = 20; y <= 22; y++ )
+                maze[y][x] = '#';
+
+        for( int x = 10; x <= 17; x++ )
+            for( int y = 18; y <= 19; y++ )
+                maze[y][x] = '#';
+
+        for( int x = 7; x <= 11; x++ )
+            for( int y = 21; y <= 22; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 7; x <= 8; x++ )
+            for( int y = 15; y <= 19; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 7; x <= 8; x++ )
+            for( int y = 6; y <= 13; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 9; x <= 11; x++ )
+            for( int y = 9; y <= 10; y++ )
+                maze[y][NX - 1 - x] =
+                maze[y][x] = '#';
+
+        for( int x = 10; x <= 17; x++ )
+            for( int y = 6; y <= 7; y++ )
+                maze[y][x] = '#';
+
+        for( int x = 13; x <= 14; x++ )
+            for( int y = 8; y <= 10; y++ )
+                maze[y][x] = '#';
+
+        for( int x = 9; x <= 18; x++ )
+            for( int y = 11; y <= 17; y++ )
+                maze[y][x] = ' ';
+
+        for( int x = 7; x <= 8; x++ )
+            maze[14][x] =
+            maze[14][NX - 1 - x] = ' ';
+
+        for( int x = 10; x <= 12; x++ )
+            maze[12][NX - 1 - x] =
+            maze[12][x] = '#';
+
+        for( int y = 13; y <= 16; y++ )
+            maze[y][10] =
+            maze[y][17] = '#';
+
+        for( int x = 11; x <= 16; x++ )
+            maze[16][x] = '#';
+
+        for( int y = 9; y <= 10; y++ )
+            maze[y][12] =
+            maze[y][15] = ' ';
+
+        for( int y = 18; y <= 19; y++ )
+            maze[y][9] =
+            maze[y][18] = ' ';
+
+        // poista mansikka siitä paikasta, josta pacman aloittaa
+        maze[23][13] = ' ';
+
+        // laita mörköjen annihilaatiojutskat
+        maze[3][1] =
+        maze[3][26] =
+        maze[23][1] =
+        maze[23][26] = 'o';
+    }
+
+    /** Aseta freimin näytön keskelle. */
+    protected void centerFrame(){
+        Dimension d = Toolkit.getDefaultToolkit().getScreenSize();
+        this.setLocation(
+                (d.width - getWidth()) / 2,
+                (d.height - getHeight()) / 2
+                );
+    }
+
+    /** Eristää polun BFS:lle antamasta lähdepisteestä pisteeseen
+     * destination.
+     * @param parent BFS-puu, joka saatiin breadthFirstSearch-metodista
+     * @param destination polun päämäärä
+     * @return polku (ensimmäisessä muistipaikassa on destination ja
+     * viimeisessa piste, josta lähtien BFS-puu oli laskettu)
+     */
+    protected ArrayList<Point> convertParentTreeToBackwardPath(
+            HashMap<Point, Point> parent,
+            Point destination
+            )
+    {
+
+        ArrayList<Point> path = new ArrayList<Point>();
+        Point current = destination;
+
+        if( parent.get(current) == null )
+            return path;
+
+        while( current != null )
+        {
+            path.add( current );
+            current = parent.get( current );
+        }
+
+        return path;
+    }
+
+    /** Laskee mansikoiden määrää labyrintissa. */
+    protected int countBerries(){
+        int nBerries = 0;
+
+        for( int y = 1; y < NY - 1; y++ )
+            for( int x = 1; x < NX - 1; x++ )
+                if( maze[y][x] == '.' )
+                    nBerries++;
+
+        return nBerries;
+    }
+
+    /** Palauttaa pelisilmukan normaalin suorituksen */
+    public void focusGained( FocusEvent e ){
+        focusLost = false;
+    }
+
+    /** Laittaa pelisilmukan tauolle. */
+    public void focusLost( FocusEvent e ){
+        focusLost = true;
+    }
+
+    /** Laskee satunnaisen pisteen, johon polku on vapaa.
+     * @param tree breadthFirstSearch:n palauttama BFS-puu
+     * @return
+     */
+    protected Point getRandomReachablePoint( HashMap<Point, Point> tree ){
+        Random r = new Random();
+        Object[] points = tree.keySet().toArray();
+        Point p = null;
+
+        do p = (Point) points[ r.nextInt( points.length ) ];
+        while( isChamberPoint(p) );
+
+        return new Point(p);
+    }
+
+    /** Alustaa pelin tiedot. */
+    protected void initGame(){
+        setPacManAndGhosts();
+
+        buildMaze();
+        canvas.setInfo( maze, pacman, ghosts );
+        printMaze();
+
+        score = 0;
+        berries = 0;
+        maxBerries = countBerries();
+
+        feastEndsAt = System.currentTimeMillis() - 1000L;
+        ghostsEaten = 0;
+        cycleID = 0;
+    }
+    
+    /** Tarkistaa pisteen p kuuluvuuden mörkökammioon.
+     * @param p tarkistettava piste
+     * @return true joss p kuuluu kammioon
+     */
+    protected boolean isChamberPoint( Point p ){
+        if( p.y == 12 && (p.x == 13 || p.x == 14) )
+            return true;
+
+        if( p.x >= 11 && p.x <= 16 && p.y >= 13 && p.y <= 15 )
+            return true;
+
+        return false;
+    }
+    
+    /** AWT:n kutsuttuna päivittää vaaditun suunnan.
+     * @param e
+     */
+    public void keyPressed( KeyEvent e ){
+        if( e.getKeyCode() == e.VK_UP )
+        {
+            typedDirection = Direction.NORTH;
+            return;
+        }
+
+        if( e.getKeyCode() == e.VK_DOWN )
+        {
+            typedDirection = Direction.SOUTH;
+            return;
+        }
+
+        if( e.getKeyCode() == e.VK_LEFT )
+        {
+            typedDirection = Direction.WEST;
+            return;
+        }
+
+        if( e.getKeyCode() == e.VK_RIGHT )
+        {
+            typedDirection = Direction.EAST;
+            return;
+        }
+    }
+
+    /** Poistaa suuntavaatimuksen. */
+    public void keyReleased( KeyEvent e ){
+        typedDirection = null;
+    }
+
+    /** Laittaa pelisilmukan tauolle jos kirjoitettu merkki on väli. */
+    public void keyTyped( KeyEvent e ){
+        if( e.getKeyChar() == ' ' )
+            pauseRequested = !pauseRequested;
+    }
+
+    public static void main( String... args ) {
+        new PacManFrame();
+    }
+
+    /** Siirtää mahdollisuuksien mukaan punaisen mörkön, "Blinky:n". */
+    protected void moveBlinky(){
+        // tee siirron jos vain mörkö ei kuulu kammioon
+        if( System.currentTimeMillis() >= ghosts[0].exitChamberAt )
+        {
+            // laske lyhimmät polut
+            HashMap<Point, Point> tree = breadthFirstSearch( ghosts[0] );
+
+            if( ghosts[0].eatable )
+            {
+                // Blinky on syötävä jos ollaan päästy tähän.
+                // Laiminlyö siirto joka toisella syklillä
+                if( ghosts[0].slowDownAtEvenCycle )
+                {
+                    if( cycleID % 2 != 0 )
+                    {
+                        // keksi jokin piste, johon mennä
+                        if( ghosts[0].target == null ||
+                            ghosts[0].target.equals( ghosts[0].location )
+                        )
+                        {
+                            if( ghosts[0].target == null )
+                                ghosts[0].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[0].target.x = p.x;
+                            ghosts[0].target.y = p.y;
+                        }
+
+                        // laske polku
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[0].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[0].location.x = next.x;
+                            ghosts[0].location.y = next.y;
+                        }
+                    }
+                }
+                else
+                {
+                    if( cycleID % 2 == 0 )
+                    {
+                        if( ghosts[0].target == null ||
+                            ghosts[0].target.equals( ghosts[0].location )
+                        )
+                        {
+                            if( ghosts[0].target == null )
+                                ghosts[0].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[0].target.x = p.x;
+                            ghosts[0].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[0].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[0].location.x = next.x;
+                            ghosts[0].location.y = next.y;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if( pacman.direction != null )
+                {
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            pacman.location
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[0].location.x = next.x;
+                        ghosts[0].location.y = next.y;
+                    }
+                }
+                else
+                {
+                    if( ghosts[0].target == null ||
+                        ghosts[0].target.equals( ghosts[0].location )
+                    )
+                    {
+                        if( ghosts[0].target == null )
+                            ghosts[0].target = new Point();
+
+                        Point p = getRandomReachablePoint( tree );
+                        ghosts[0].target.x = p.x;
+                        ghosts[0].target.y = p.y;
+                    }
+
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            ghosts[0].target
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[0].location.x = next.x;
+                        ghosts[0].location.y = next.y;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Siirtää mahdollisuuksien mukaan oranssin mörkön, "Clyde:n". */
+    protected void moveClyde(){
+        if( System.currentTimeMillis() >= ghosts[3].exitChamberAt )
+        {
+            HashMap<Point, Point> tree = breadthFirstSearch( ghosts[3] );
+
+            if( ghosts[3].eatable )
+            {
+                if( ghosts[3].slowDownAtEvenCycle )
+                {
+                    if( cycleID % 2 != 0 )
+                    {
+                        if( ghosts[3].target == null ||
+                            ghosts[3].target.equals( ghosts[3].location )
+                        )
+                        {
+                            if( ghosts[3].target == null )
+                                ghosts[3].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[3].target.x = p.x;
+                            ghosts[3].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[3].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[3].location.x = next.x;
+                            ghosts[3].location.y = next.y;
+                        }
+                    }
+                }
+                else
+                {
+                    if( cycleID % 2 == 0 )
+                    {
+                        if( ghosts[3].target == null ||
+                            ghosts[3].target.equals( ghosts[3].location )
+                        )
+                        {
+                            if( ghosts[3].target == null )
+                                ghosts[3].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[3].target.x = p.x;
+                            ghosts[3].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[3].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[3].location.x = next.x;
+                            ghosts[3].location.y = next.y;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // jahtaa PacMan vain silloin kun se ei ole menossa etelään
+                if( pacman.direction != Direction.SOUTH )
+                {
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            pacman.location
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[3].location.x = next.x;
+                        ghosts[3].location.y = next.y;
+                    }
+                }
+                else
+                {
+                    if( ghosts[3].target == null ||
+                        ghosts[3].target.equals( ghosts[3].location )
+                    )
+                    {
+                        if( ghosts[3].target == null )
+                            ghosts[3].target = new Point();
+
+                        Point p = getRandomReachablePoint( tree );
+                        ghosts[3].target.x = p.x;
+                        ghosts[3].target.y = p.y;
+                    }
+
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            ghosts[3].target
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[3].location.x = next.x;
+                        ghosts[3].location.y = next.y;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Siirtää mahdollisuuksien mukaan turkoosin mörkön, "Inky:n". */
+    protected void moveInky(){
+        if( System.currentTimeMillis() >= ghosts[2].exitChamberAt )
+        {
+            HashMap<Point, Point> tree = breadthFirstSearch( ghosts[2] );
+
+            if( ghosts[2].eatable )
+            {
+                if( ghosts[2].slowDownAtEvenCycle )
+                {
+                    if( cycleID % 2 != 0 )
+                    {
+                        if( ghosts[2].target == null ||
+                            ghosts[2].target.equals( ghosts[2].location )
+                        )
+                        {
+                            if( ghosts[2].target == null )
+                                ghosts[2].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[2].target.x = p.x;
+                            ghosts[2].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[2].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[2].location.y = next.y;
+                            ghosts[2].location.x = next.x;
+                        }
+                    }
+                }
+                else
+                {
+                    if( cycleID % 2 == 0 )
+                    {
+                        if( ghosts[2].target == null ||
+                            ghosts[2].target.equals( ghosts[2].location )
+                        )
+                        {
+                            if( ghosts[2].target == null )
+                                ghosts[2].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[2].target.x = p.x;
+                            ghosts[2].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[2].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[2].location.x = next.x;
+                            ghosts[2].location.y = next.y;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // jahtaa PacMan vain silloin kun se ei ole menossa itään
+                if( pacman.direction != Direction.EAST )
+                {
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            pacman.location
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[2].location.x = next.x;
+                        ghosts[2].location.y = next.y;
+                    }
+                }
+                else
+                {
+                    if( ghosts[2].target == null ||
+                        ghosts[2].target.equals( ghosts[2].location )
+                    )
+                    {
+                        if( ghosts[2].target == null )
+                            ghosts[2].target = new Point();
+
+                        Point p = getRandomReachablePoint( tree );
+                        ghosts[2].target.x = p.x;
+                        ghosts[2].target.y = p.y;
+                    }
+
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            ghosts[2].target
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[2].location.x = next.x;
+                        ghosts[2].location.y = next.y;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Siirtää mahdollisuuksien mukaan pinkin mörkön, "Pinky:n". */
+    protected void movePinky(){
+        if( System.currentTimeMillis() >= ghosts[1].exitChamberAt )
+        {
+            HashMap<Point, Point> tree = breadthFirstSearch( ghosts[1] );
+
+            if( ghosts[1].eatable )
+            {
+                if( ghosts[1].slowDownAtEvenCycle )
+                {
+                    if( cycleID % 2 != 0 )
+                    {
+                        if( ghosts[1].target == null ||
+                            ghosts[1].target.equals( ghosts[1].location )
+                        )
+                        {
+                            if( ghosts[1].target == null )
+                                ghosts[1].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[1].target.x = p.x;
+                            ghosts[1].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[1].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[1].location.x = next.x;
+                            ghosts[1].location.y = next.y;
+                        }
+                    }
+                }
+                else
+                {
+                    if( cycleID % 2 == 0 )
+                    {
+                        if( ghosts[1].target == null ||
+                            ghosts[1].target.equals( ghosts[1].location )
+                        )
+                        {
+                            if( ghosts[1].target == null )
+                                ghosts[1].target = new Point();
+
+                            Point p = getRandomReachablePoint( tree );
+                            ghosts[1].target.x = p.x;
+                            ghosts[1].target.y = p.y;
+                        }
+
+                        ArrayList<Point> path =
+                                convertParentTreeToBackwardPath(
+                                    tree,
+                                    ghosts[1].target
+                                    );
+
+                        if( path.size() >= 2 )
+                        {
+                            // tee siirron
+                            Point next = path.get( path.size() - 2 );
+                            ghosts[1].location.x = next.x;
+                            ghosts[1].location.y = next.y;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // jahtaa PacMan vain silloin kun se ei ole menossa länteen
+                if( pacman.direction != Direction.WEST )
+                {
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            pacman.location
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[1].location.x = next.x;
+                        ghosts[1].location.y = next.y;
+                    }
+                }
+                else
+                {
+                    if( ghosts[1].target == null ||
+                        ghosts[1].target.equals( ghosts[1].location )
+                    )
+                    {
+                        if( ghosts[1].target == null )
+                            ghosts[1].target = new Point();
+
+                        Point p = getRandomReachablePoint( tree );
+                        ghosts[1].target.x = p.x;
+                        ghosts[1].target.y = p.y;
+                    }
+
+                    ArrayList<Point> path = convertParentTreeToBackwardPath(
+                            tree,
+                            ghosts[1].target
+                            );
+
+                    if( path.size() >= 2 )
+                    {
+                        // tee siirron
+                        Point next = path.get( path.size() - 2 );
+                        ghosts[1].location.x = next.x;
+                        ghosts[1].location.y = next.y;
+                    }
+                }
+            }
+        }
+    }
+
+    /** Suorittaa pelisilmukan. */
+    protected void play(){
+        // odota sekunnin ennen kuin mörköt lähtevät liikkeelle
+        try {
+            Thread.sleep( 1000 );
+        }
+        catch( InterruptedException ie ){}
+
+        for(;;)
+        {
+            try {
+                Thread.sleep( 150 );
+            }
+            catch( InterruptedException ie ){}
+
+            // jos jompikumpi on tosi, odotetaan seuraavat 150 ms
+            if( focusLost || pauseRequested ) continue;
+
+            // käyttäjä näppäili suunnan; tarkistetaan ja päivitetään pacman:n
+            // suunta
+            if( typedDirection != null )
+            {
+                if( typedDirection == Direction.NORTH )
+                {
+                    Point p = new Point( pacman.location );
+                    p.y--;
+
+                    if( maze[p.y][p.x] != '#' )
+                        pacman.direction = Direction.NORTH;
+                }
+                else if( typedDirection == Direction.EAST )
+                {
+                    Point p = new Point( pacman.location );
+                    p.x++;
+
+                    // jos p.y == 14 ja p.x == NX (pacman oikean tunnelin
+                    // päässä) asetetaan suunta, sillä #-merkkiä ei ole pacman:n
+                    // edessä
+                    if( (p.y == 14 && p.x == NX) || maze[p.y][p.x] != '#' )
+                        pacman.direction = Direction.EAST;
+                }
+                else if( typedDirection == Direction.SOUTH )
+                {
+                    Point p = new Point( pacman.location );
+
+                    // älä suorita jos pacman olisi täällä suunnalla päässyt
+                    // mörköhuoneeseen
+                    if( p.y != 11 || p.x < 13 || p.x > 14 )
+                    {
+                        p.y++;
+
+                        if( maze[p.y][p.x] != '#' )
+                            pacman.direction = Direction.SOUTH;
+                    }
+                }
+                else if( typedDirection == Direction.WEST )
+                {
+                    Point p = new Point( pacman.location );
+                    p.x--;
+
+                    // jos p.y == 14 ja p.x == -1 (pacman vasemman tunnelin
+                    // päässä) asetetaan suunta, sillä #-merkkiä ei ole pacman:n
+                    // edessä
+                    if( (p.y == 14 && p.x == -1) || maze[p.y][p.x] != '#' )
+                        pacman.direction = Direction.WEST;
+                }
+            }
+
+            // siirretään pacman
+            if( pacman.direction != null )
+            {
+                Point p = new Point( pacman.location );
+
+                switch( pacman.direction )
+                {
+                    case NORTH:
+                        p.y--;
+
+                        if( maze[p.y][p.x] != '#' )
+                            pacman.location.y--;
+                        else
+                            pacman.direction = null;
+
+                        break;
+
+                    case EAST:
+                        p.x++;
+
+                        if( p.y == 14 && p.x == NX )
+                            // ollaan menossa oikeaan tunneliin, teleportoidaan
+                            // pacman vasemman tunnelin alkuun
+                            pacman.location.x = 0;
+                        else if(maze[p.y][p.x] != '#')
+                            pacman.location.x++;
+                        else
+                            pacman.direction = null;
+
+                        break;
+
+                    case SOUTH:
+                        p.y++;
+
+                        if(maze[p.y][p.x] != '#')
+                            pacman.location.y++;
+                        else
+                            pacman.direction = null;
+
+                        break;
+
+                    case WEST:
+                        p.x--;
+
+                        if( p.y == 14 && p.x == -1 )
+                            // ollaan menossa vasempaan tunneliin,
+                            // teleportoidaan pacman oikean tunnelin alkuun
+                            pacman.location.x = NX - 1;
+                        else if(maze[p.y][p.x] != '#')
+                            pacman.location.x--;
+                        else
+                            pacman.direction = null;
+
+                        break;
+                }
+            }
+
+            // kun mörköjen syönti on kesken, joudutaan tarkistamaan, että
+            // tuliko syötyä mörkö ennen kuin mörköjä siirretään
+            for( int i = 0; i < NGHOSTS; i++ )
+                if( ghosts[i].location.equals( pacman.location ) )
+                {
+                    if( ghosts[i].eatable )
+                    {
+                        ghostsEaten++;
+                        score += (int) 100 * Math.pow( 2.0, ghostsEaten );
+
+                        ghosts[i].eatable = false;
+                        ghosts[i].exitChamberAt =
+                                System.currentTimeMillis() + 8000L;
+
+                        setGhostInChamber( ghosts[i] );
+                        break;
+                    }
+
+                    pacman.eaten = true;
+                    printMaze();
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Your score is " + score + ".",
+                            "Pacman's eaten.",
+                            JOptionPane.INFORMATION_MESSAGE
+                            );
+
+                    System.exit( 0 );
+                }
+
+            // siirretään mörköt; tekoälyyn pääsee näistä sisään
+            moveBlinky();
+            movePinky();
+            moveInky();
+            moveClyde();
+
+            if( System.currentTimeMillis() >= feastEndsAt )
+            {
+                ghostsEaten = 0;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                {
+                    ghosts[i].eatable = false;
+                    ghosts[i].show = true;
+                }
+            }
+
+            for( int i = 0; i < NGHOSTS; i++ )
+                if( ghosts[i].location.equals( pacman.location ) )
+                {
+                    if( ghosts[i].eatable )
+                    {
+                        ghostsEaten++;
+                        score += (int) 100 * Math.pow( 2.0, ghostsEaten );
+
+                        ghosts[i].eatable = false;
+                        ghosts[i].exitChamberAt =
+                                System.currentTimeMillis() + 8000L;
+
+                        setGhostInChamber( ghosts[i] );
+                        break;
+                    }
+
+                    pacman.eaten = true;
+                    printMaze();
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Your score is " + score + ".",
+                            "Pacman's eaten.",
+                            JOptionPane.INFORMATION_MESSAGE
+                            );
+
+                    System.exit( 0 );
+                }
+
+            if( maze[pacman.location.y][pacman.location.x] == '.' )
+            {
+                maze[pacman.location.y][pacman.location.x] = ' ';
+                score += 10;
+                berries++;
+
+                if( berries == maxBerries )
+                {
+                    printMaze();
+                    JOptionPane.showMessageDialog(
+                            this,
+                            "Your score is " + score + ".",
+                            "Victory!",
+                            JOptionPane.WARNING_MESSAGE
+                            );
+
+                    System.exit( 0 );
+                }
+            }
+
+            if( maze[pacman.location.y][pacman.location.x] == 'o' )
+            {
+                maze[pacman.location.y][pacman.location.x] = ' ';
+                feastEndsAt = System.currentTimeMillis() + 20000L;
+                score += 50;
+                ghostsEaten = 0;
+
+                for( int i = 0; i < NGHOSTS; i++ )
+                {
+                    ghosts[i].eatable = true;
+                    ghosts[i].slowDownAtEvenCycle =
+                            cycleID % 2 == 0 ?
+                                false :
+                                true;
+                }
+            }
+
+            printMaze();
+            cycleID++;
+        }
+    }
+
+    /** Piirtää graafikat canvakselle. */
+    protected void printMaze(){
+        canvas.repaint();
+    }
+
+    /** Asettaa mörkön siihen kammioon, josta mörköt lähtevät liikkeelle.
+     * Kutsutaan, kun PacMan syö mörkön.
+     * @param ghost kammioon asetettava mörkö
+     */
+    protected void setGhostInChamber( Ghost ghost ){
+        ghost.location.y = 15;
+
+        outer:
+        for( int x = 11; x <= 16; x++ )
+        {
+            ghost.location.x = x;
+
+            for( int i = 0; i < NGHOSTS; i++ )
+                if( ghost != ghosts[i] &&
+                    ghost.location.equals( ghosts[i].location )
+                )
+                    continue outer;
+
+            break;
+        }
+    }
+
+    /** Alustaa PacMan:n ja mörköjen tiedot. */
+    protected void setPacManAndGhosts(){
+        pacman.location = new Point( 13, 23 );
+        pacman.direction = null;
+        pacman.eaten = false;
+
+        ghosts[0].location = new Point( 13, 11 );
+        ghosts[1].location = new Point( 11, 15 );
+        ghosts[2].location = new Point( 13, 15 );
+        ghosts[3].location = new Point( 15, 15 );
+
+        long now = System.currentTimeMillis();
+
+        ghosts[0].exitChamberAt = now;
+        ghosts[1].exitChamberAt = now + 2000L;
+        ghosts[2].exitChamberAt = now + 3500L;
+        ghosts[3].exitChamberAt = now + 4500L;
+
+        for( int i = 0; i < NGHOSTS; i++ )
+        {
+            ghosts[i].eatable = false;
+            ghosts[i].show = true;
+        }
+    }
+
+    /** Asettaa mörköjen värit. */
+    protected void setupGhostColors(){
+        ghosts[0].color = Color.red;
+        ghosts[1].color = Color.pink;
+        ghosts[2].color = Color.cyan;
+        ghosts[3].color = Color.orange;
+        eatableGhostColor = new Color( 160, 160, 255 );
+    }
+}

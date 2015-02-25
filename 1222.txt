@@ -1,0 +1,63 @@
+#include <windows.h>
+#include <stdio.h>
+
+unsigned __int64 rdtsc(){
+    __asm xor eax, eax
+    // cpuid mm. takaa sen, että rdtsc-käskyä edeltävät käskyt valmistuvat
+    // ennen kuin rdtsc suoritetaan. Ongelman muodostaa uusimpien
+    // suoritinten 'out-of-order execution' - tekniikka.
+    __asm cpuid
+    __asm rdtsc
+}
+
+int main(void){
+    unsigned __int64 before;
+    unsigned __int64 after;
+    unsigned __int64 overhead;
+    BOOL             bAffinitySet;
+
+    // haetaan korkeimman mahdollisen prioriteetin, jotta
+    // Sleep():sta palataan mahdollisimman pian.
+    // suorita prosessikuva mieluiten järjestelmänvalvojan oikeuksilla
+    SetPriorityClass(
+        GetCurrentProcess(),
+        REALTIME_PRIORITY_CLASS
+        );
+
+    SetThreadPriority(
+        GetCurrentThread(),
+        THREAD_PRIORITY_TIME_CRITICAL
+        );
+
+    // suljetaan prosessi yhdelle ytimelle; me ei haluta lukea eri
+    // TSC:t moniydinjärjestelmissä
+    bAffinitySet = SetProcessAffinityMask( GetCurrentProcess(), 1 );
+
+    if( !bAffinitySet )
+        printf( "Could not lock the process on a single core.\n" );
+
+    // mitataan Sleep():n overhead 
+    before = rdtsc();
+    Sleep( 0 );
+    after = rdtsc();
+
+    overhead = after - before;
+
+    // mitataan CPU:n taajuus
+    before = rdtsc();
+    Sleep( 1000 );
+    after = rdtsc();
+
+    printf(
+        "Millions of cycles per second: %.3f\n",
+        (float)((after - before - overhead) / 1000000.0f)
+        );
+    
+    printf(
+        "Sleep() - overhead: %I64d cycles\n",
+        overhead
+        );
+
+    getchar();
+    return 0;
+}

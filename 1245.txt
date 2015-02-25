@@ -1,0 +1,212 @@
+
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.NoSuchElementException;
+import java.util.TreeSet;
+
+public class Main {
+    
+    /**
+     * Our funky graph path iterator. Generates all possible paths from
+     * a specified source node to a specified goal node, iterating in the
+     * *alphabetical* order.
+     */
+    public static class GraphPathIterator
+    implements Iterable<LinkedList<Node>>, Iterator<LinkedList<Node>> {
+        private Node source;
+        private Node goal;
+        private HashSet<Node> blackList;
+        private LinkedList<Node> nodeStack;
+        private LinkedList<Iterator<Node>> iteratorStack;
+        private LinkedList<Node> nextPath;
+        
+        public GraphPathIterator(Node source, Node goal) {
+            this.source = source;
+            this.goal = goal;
+            
+            if (source != goal) {
+                blackList = new HashSet<Node>();
+                nodeStack = new LinkedList<Node>();
+                iteratorStack = new LinkedList<Iterator<Node>>();
+                computeNextPath();
+            }
+        }
+        
+        public boolean hasNext() {
+            return nextPath != null;
+        }
+        
+        public LinkedList<Node> next() {
+            if (nextPath == null) {
+                throw new NoSuchElementException("No more paths available.");
+            }
+            
+            LinkedList<Node> path = nextPath;
+            nextPath = null;
+            computeNextPath();
+            return path;
+        }
+        
+        public void remove() {
+            throw new UnsupportedOperationException("Removing a path is not "
+                    + "supported.");
+        }
+        
+        public Iterator<LinkedList<Node>> iterator() {
+            return this;
+        }
+        
+        protected void computeNextPath() {
+            if (nodeStack.isEmpty()) {
+                nodeStack.addLast(source);
+                iteratorStack.addLast(source.iterator());
+                blackList.add(source);
+            } else {
+                blackList.remove(nodeStack.removeLast());
+                iteratorStack.removeLast();
+            }
+                
+            while (nodeStack.size() > 0) {
+                Node top = nodeStack.getLast();
+
+                if (top == goal) {
+                    nextPath = new LinkedList<Node>(nodeStack);
+                    return;
+                }
+
+                if (iteratorStack.getLast().hasNext()) {
+                    Node next = iteratorStack.getLast().next();
+
+                    if (blackList.contains(next)) {
+                        continue;
+                    }
+
+                    nodeStack.addLast(next);
+                    blackList.add(next);
+                    iteratorStack.addLast(next.iterator());
+                } else {
+                    iteratorStack.removeLast();
+                    blackList.remove(nodeStack.removeLast());
+                }
+            }
+        }
+    }
+    
+    /**
+     * Our graph node implementation.
+     */
+    public static class Node implements Comparable<Node>, Iterable<Node> {
+        private String name;
+        
+        /**
+         * We prefer an ordered set as to be able to generate the paths in
+         * alphabetical order.
+         */
+        private TreeSet<Node> outgoingNodes;
+        
+        public Node(String name) {
+            this.name = name;
+            outgoingNodes = new TreeSet<Node>();
+        }
+        
+        public void connectTo(Node other) {
+            if (other != null) {
+                outgoingNodes.add(other);
+            }
+        }
+        
+        public boolean isConnectedTo(Node other) {
+            return outgoingNodes.contains(other);
+        }
+        
+        public int compareTo(Node other) {
+            return this.name.compareTo(other.name);
+        }
+        
+        public Iterator<Node> iterator() {
+            return new ChildIterator(this);
+        }
+        
+        /**
+         * The child iterator over a node's descendant (outgoing nodes).
+         */
+        private static class ChildIterator implements Iterator<Node> {
+            private Iterator<Node> iterator;
+            
+            ChildIterator(Node node) {
+                iterator = node.outgoingNodes.iterator();
+            }
+            
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+            
+            public Node next() {
+                return iterator.next();
+            }
+            
+            public void remove() {
+                throw new UnsupportedOperationException("Removing a child is "
+                        + "not supported.");
+            }
+        }
+    }
+    
+    public static void main(String[] args) {
+        /* The graph:
+         * 
+         *   B   E
+         *  / \ / \
+         * A   D-F-H-I
+         *  \ / \ / \
+         *   C   G   J
+         *    \_____/
+         */
+        
+        Node A = new Node("A");
+        Node B = new Node("B");
+        Node C = new Node("C");
+        Node D = new Node("D");
+        Node E = new Node("E");
+        Node F = new Node("F");
+        Node G = new Node("G");
+        Node H = new Node("H");
+        Node I = new Node("I");
+        Node J = new Node("J");
+        
+        A.connectTo(B); // Create the *directed* edge A -> B.
+        A.connectTo(C); // Edge A -> C.
+        B.connectTo(D); // B -> D.
+        C.connectTo(D); // ...
+        C.connectTo(J);
+        D.connectTo(E);
+        D.connectTo(F);
+        D.connectTo(G);
+        E.connectTo(H);
+        F.connectTo(H);
+        G.connectTo(H);
+        H.connectTo(I);
+        H.connectTo(J);
+        J.connectTo(H);
+        
+        for (LinkedList<Node> path : new GraphPathIterator(A, I)) {
+            printPath(path);
+        }
+    }
+    
+    static void printPath(LinkedList<Node> path) {
+        int i = 0;
+        
+        for (Node node : path) {
+            System.out.print(node.name);
+            
+            if (i + 1 < path.size()) {
+                System.out.print("->");
+                i++;
+            }
+        }
+        
+        System.out.println();
+    }
+}

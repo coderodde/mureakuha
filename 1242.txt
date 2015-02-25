@@ -1,0 +1,314 @@
+package com.mureakuha.util;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.Random;
+import java.util.TreeMap;
+
+public class Main {
+
+    /**
+     * This class represents an unbalanced binary search tree. Provides only
+     * minimum functionality needed in <code>Treesort</code>.
+     * 
+     * @param <T> the element type. 
+     */
+    static class Tree<T extends Comparable<? super T>> implements Iterable<T>{
+        static class Node<T extends Comparable<? super T>> {
+            T value;
+            Node<T> left;
+            Node<T> right;
+            Node<T> parent;
+            
+            Node( T value ){
+                this.value = value;
+            }
+        }
+        
+        private Node<T> root;
+        private int size;
+        
+        /**
+         * Inserts a value into this <code>Tree</code>.
+         * 
+         * @param value the value to insert. 
+         */
+        void insert( T value ){
+            Node<T> newNode = new Node<T>( value );
+            
+            if( root == null )
+            {
+                size = 1;
+                root = newNode;
+                return;
+            }
+            
+            Node<T> current = root;
+            int cmp;
+            
+            for(;;)
+            {
+                if( (cmp = value.compareTo( current.value )) < 0 )
+                {
+                    if( current.left != null )
+                        current = current.left;
+                    else
+                        break;
+                }
+                else
+                {
+                    if( current.right != null )
+                        current = current.right;
+                    else
+                        break;
+                }
+            }
+            
+            if( cmp < 0 )
+                current.left = newNode;
+            else
+                current.right = newNode;
+            
+            newNode.parent = current;
+            size++;
+        }
+        
+        /**
+         * Returns the successor node of <code>node</code>.
+         * 
+         * @param node the node whose successor to search.
+         * 
+         * @return the successor node of <code>node</code> or <code>null</code>
+         * if <code>node</code> is the rightmost node, i.e., has no successor.
+         */
+        Node<T> successor( Node<T> node ){
+            if( node.right == null )
+            {
+                while( node.parent != null && node.parent.right == node )
+                    node = node.parent;
+                
+                if( node.parent == null )
+                    return null;
+                else
+                    return node.parent;
+            }
+            
+            node = node.right;
+            
+            while( node.left != null )
+                node = node.left;
+            
+            return node;
+        }
+        
+        /**
+         * Gets a tree iterator for this <code>Tree</code>.
+         * 
+         * @return a tree iterator. 
+         */
+        public Iterator<T> iterator(){
+            return new TreeIterator();
+        }
+        
+        /**
+         * This class traverses a <code>Tree</code> in-order.
+         */
+        public class TreeIterator implements Iterator<T>{
+            private int retrieved;
+            private Node<T> current;
+            
+            public TreeIterator(){
+                current = root;
+                
+                // Go point to the least value node.
+                if( current != null )
+                    while( current.left != null )
+                        current = current.left;
+           }
+            
+            public boolean hasNext(){
+                return retrieved < size;
+            }
+            
+            public T next(){
+                if( retrieved == 0 )
+                {
+                    retrieved = 1;
+                    return current.value;
+                }
+                
+                Node<T> node = successor( current );
+                current = node;
+                retrieved++;
+                return current.value;
+            }
+            
+            public void remove(){
+                throw new UnsupportedOperationException();
+            }
+        }
+    }
+    
+    /**
+     * Generates an array holding elements of <code>array</code>, but in
+     * ascending order. This method utilizes a binary search tree
+     * (not balanced), which is sufficient on random data, but may degrade to
+     * O(n * n)-behavior if <code>array</code> has rather high "presortedness"
+     * (e.g. is already in ascending or descending order). On random data, and
+     * if element count is at most 3.75e5, provides performance comparable to
+     * Mergesort or even better.
+     * 
+     * @param <T> the element type; should be <code>Comparable</code>.
+     * @param array the array whose values to put in order.
+     * 
+     * @return the sorted result array.
+     */
+    public static <T extends Comparable<? super T>> T[] Treesort( T[] array ){
+        Tree<T> tree = new Tree<T>();
+        T[] result = array.clone();
+        int i = 0;
+        
+        // Load the elements into the tree.
+        for( T element : array )
+            tree.insert( element );
+        
+        // Iterate the elements in ascending order and store them in the result
+        // array.
+        for( T element : tree )
+            result[i++] = element;
+        
+        return result;
+    }
+    
+    /**
+     * Generates a sorted array using the values in <code>array</code> (which
+     * it does not modify). The approach is the same as in
+     * <code>Treesort</code>, but the underlying tree structure is balanced,
+     * which guarantees O(n log n)-behavior in any case.
+     * 
+     * @param <T> the element type, should be <code>Comparable</code>.
+     * @param array the array whose values to sort.
+     * 
+     * @return the sorted result array.
+     */
+    public static <T extends Comparable<? super T>> T[] RBTreesort( T[] array ){
+        // TreeMap is implemented as a red-black -tree.
+        TreeMap<T, ArrayList<T>> map = new TreeMap<T, ArrayList<T>>();
+        T[] result = array.clone();
+        int i = 0;
+        
+        // Store the values to sort in the tree.
+        for( T element : array )
+            if( map.containsKey( element ) )
+                map.get( element ).add( element );
+            else
+            {
+                ArrayList<T> list = new ArrayList<T>();
+                list.add( element );
+                map.put( element, list );
+            }
+        
+        // Iterate the tree in value increasing order and store sequentially the
+        // values in the result array.
+        for( T key : map.keySet() )
+            for( T element : map.get( key ) )
+                result[i++] = element;
+        
+        return result;
+    }
+    
+    public static void main( String... args ){
+        final int N = 100000;
+        Integer[] array1 = getRandomArray( N, 533 );
+        Integer[] array2 = array1.clone();
+        Integer[] array3 = array1.clone();
+                
+        System.out.println( "Sorting random data of " + N + " elements:\n" );
+        
+        long ta = System.currentTimeMillis();
+        Integer[] result = Treesort( array1 );
+        long tb = System.currentTimeMillis();
+        
+        System.out.println( "Treesort(): " + (tb - ta) + " ms." );
+        System.out.println( "Is sorted: " + isSorted( result ) + "\n" );
+        
+        ta = System.currentTimeMillis();
+        Integer[] result2 = RBTreesort( array2 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println( "RBTreesort(): " + (tb - ta) + " ms." );
+        System.out.println( "Is sorted: " + isSorted( result2 ) + "\n" );
+        
+        ta = System.currentTimeMillis();
+        Arrays.sort( array3 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println( "Arrays.sort(): " + (tb - ta) + " ms." );
+        System.out.println( "Is sorted: " + isSorted( array3 ) + "\n" );
+    
+        System.out.println(
+                "Treesort() sorts stably: " + areEqual( array3, result )
+                );
+        
+        System.out.println(
+                "RBTreesort() sorts stably: " + areEqual( array3, result2 )
+                );
+    }
+    
+    /**
+     * Allocates and returns a random integer array.
+     * 
+     * @param size the size of the result array.
+     * @param seed the seed for the PRNG.
+     * 
+     * @return a random integer array.
+     */
+    public static Integer[] getRandomArray( int size, long seed ){
+        Random r = new Random( seed );
+        Integer[] array = new Integer[size];
+        
+        for( int i = 0; i < size; i++ )
+            array[i] = r.nextInt( size );
+        
+        return array;
+    }
+    
+    /**
+     * Checks whether an array is in ascending order.
+     * 
+     * @param array the array against which the test is run.
+     * 
+     * @return <code>true</code> if the argument array is in ascending order;
+     * <code>false</code> otherwise.
+     */
+    public static boolean isSorted( Integer[] array ){
+        for( int i = 0; i < array.length - 1; i++ )
+            if( array[i].compareTo( array[i + 1] ) > 0 )
+                return false;
+        
+        return true;
+    }
+    
+    /**
+     * Checks whether the argument arrays contain the same references in the
+     * same order.
+     * 
+     * @param array1 the first array to check.
+     * @param array2 the second array.
+     * 
+     * @return <code>true</code> if <code>array1</code> and <code>array2</code>
+     * both have the same length and for each index <code>i</code>
+     * <code>array1[i] == array2[i]</code>; <code>false</code> otherwise.
+     */
+    public static boolean areEqual( Integer[] array1, Integer[] array2 ){
+        if( array1.length != array2.length )
+            return false;
+        
+        for( int i = 0; i < array1.length; i++ )
+            if( array1[i] != array2[i] )
+                return false;
+        
+        return true;
+    }
+}

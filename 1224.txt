@@ -1,0 +1,102 @@
+import java.util.BitSet;
+import java.util.Random;
+
+public class BloomFilter {
+    public static final int MAX_HASH_FUNCTIONS = 16;
+    protected static final int SIGN_OFF_MASK = 0x7fffffff;
+
+    protected int[] hashMasks;
+    protected int bits;
+    protected BitSet bitset;
+
+    /** Constructs a new <code>BloomFilter</code> comprising <code>bits</code>
+     * amount of bits in the bit array and <code>hashes</code> amount of hash
+     * functions.
+     * @param bits the amount of bits in this filter
+     * @param hashes the amount of hash functions in this filter
+     */
+    public BloomFilter( int bits, int hashes ){
+        if( bits < 1 )
+            throw new IllegalArgumentException(
+                    "number of bits in the filter is non-positive: " + bits
+                    );
+
+        if( hashes < 1 )
+            throw new IllegalArgumentException(
+                    "amount of hash-functions is non-positive: " + hashes
+                    );
+
+        if( hashes > MAX_HASH_FUNCTIONS )
+            hashes = MAX_HASH_FUNCTIONS;
+
+        bitset = new BitSet(bits);
+        this.bits = bits;
+        Random r = new Random();
+        hashMasks = new int[hashes];
+        for( int i = 0; i < hashes; i++ )
+            hashMasks[i] = r.nextInt();
+    }
+
+    /** Adds a specified object to this <code>BloomFilter</code> by computing
+     * <code>hashMasks.length</code> amount of hash values and setting the bits
+     * indexed by those hash values to 1.
+     * @param o the object to be added to the filter
+     */
+    public void add( Object o ){
+        int hashValue = o.hashCode();
+        int n = hashMasks.length;
+        for( int i = 0; i < n; i++ )
+            bitset.set( ((hashValue ^ hashMasks[i]) & SIGN_OFF_MASK) % bits );
+    }
+
+    /** Queries whether the specified object was added to this <code>BloomFilter
+     * </code>. While it is possible to return <code>true</code> on the object
+     * that was not added to this <code>BloomFilter</code>, the return value of
+     * <code>false</code> is 100 percent certain (the object is definitely not
+     * in the filter).
+     * @param o the object to query
+     * @return <code>true</code> if <code>o</code> might be added to the filter
+     * or <code>false</code> if the object is definitely not in this <code>
+     * BloomFilter</code>.
+     */
+    public boolean query( Object o ){
+        int hashValue = o.hashCode();
+        int n = hashMasks.length;
+        for( int i = 0; i < n; i++ )
+            if( !bitset.get(((hashValue^hashMasks[i]) & SIGN_OFF_MASK) % bits) )
+                return false;
+
+        return true;
+    }
+
+    public static void main( String... args ){
+        // Making new Bloom filter comprising 15 bits and 3 hash functions.
+        BloomFilter filter = new BloomFilter( 15, 3 );
+        String[] angels = {
+            "Gabriel",
+            "Raphael",
+            "Uriel",
+            "Michael",
+            "Malacchim",
+            "Seraphim",
+            "Ophanim",
+            "Satan"
+        };
+
+        // Fill the filter with some angels.
+        for( int i = 0; i < 5; i++ )
+        {
+            filter.add( angels[i] );
+            System.out.println("Added into the filter: " + angels[i]);
+        }
+
+        System.out.println();
+
+        // Query for angels.
+        for( int i = 0; i < angels.length; i++ )
+            System.out.println(
+                    angels[i] + " is in the filter: " +
+                    (filter.query(angels[i]) ? "maybe" : "definitely not")
+                    );
+    }
+}

@@ -1,0 +1,243 @@
+import java.util.Random;
+
+public class Main {
+
+    /** Sorts an integer list using IntroSort-algorithm. This method declaration
+     * comprises the client API.
+     * 
+     * @param list the integer list to sort
+     */
+    public static void Introsort( int[] list ){
+        Random prng = new Random();
+        Introsort( list, 0, list.length - 1, 0, prng );
+    }
+
+    /** Sorts an integer list into ascending order. This method is the
+     * implementation of the IntroSort-algorithm.
+     *
+     * @param list the list to sort
+     * @param fromIndex the start index of the sublist to sort
+     * @param toIndex the end index of the sublist to sort
+     * @param depth the depth of recursion
+     * @param prng the pseudo-random number generator
+     */
+    private static void Introsort(
+            int[] list,
+            int fromIndex,
+            int toIndex,
+            int depth,
+            Random prng
+            )
+    {
+        if( fromIndex == toIndex )
+            return;
+
+        // Check whether the sublist contains only 2 elements; we require at
+        // least 3 elements to sort as the pivot is chosen from 3 elements.
+        if( fromIndex + 1 == toIndex )
+        {
+            if( list[toIndex] < list[fromIndex] )
+            {
+                int tmp = list[toIndex];
+                list[toIndex] = list[fromIndex];
+                list[fromIndex] = tmp;
+            }
+            return;
+        }
+
+        if( depth >= (int) Math.ceil(
+                Math.log( list.length ) / Math.log( 2.0 )
+                )
+        )
+        {
+            // If our quicksort seems to degrade to quadratic behaviour,
+            // perform heapsort on the subarray and get done with it.
+            Heapsort( list, fromIndex, toIndex );
+            return;
+        }
+
+        int pivotFront = list[fromIndex];
+        int pivotBack = list[toIndex];
+        int pivotRandom =
+                list[fromIndex + 1 + prng.nextInt( toIndex - fromIndex - 1 )];
+
+        int pivot = median( pivotFront, pivotRandom, pivotBack );
+
+        int i = fromIndex;
+        int j = toIndex;
+
+        // Perform the partitioning.
+        while( i <= j )
+        {
+            while( list[i] < pivot ) i++;
+            while( list[j] > pivot ) j--;
+
+            if( i <= j )
+            {
+                int tmp = list[i];
+                list[i] = list[j];
+                list[j] = tmp;
+                j--;
+                i++;
+            }
+        }
+
+        // Recursively sort the two sublists. Don't forget to increment the
+        // depth of the following recursive calls.
+        Introsort( list, fromIndex, i - 1, depth + 1, prng );
+        Introsort( list, i, toIndex, depth + 1, prng );
+    }
+
+    /** Sorts a sublist into ascending order using HeapSort-algorithm.
+     * @param list the list in which to perform sorting
+     * @param fromIndex index of the first sublist element in the list
+     * @param toIndex index of the last sublist element in the list
+     */
+    private static void Heapsort( int[] list, int fromIndex, int toIndex ){
+        int n = toIndex - fromIndex + 1;
+
+        // First, we have to build a max-heap.
+        for( int index = n / 2 - 1; index >= 0; index-- )
+        {
+            int leftChildIndex;
+            int rightChildIndex;
+            int maxIndex;
+
+            // Sift down the element located at index <code>fromIndex + index
+            // </code>.
+            while( true )
+            {
+                leftChildIndex = (index << 1) + 1;
+                rightChildIndex = (index + 1) << 1;
+                maxIndex = index;
+
+                if(
+                    leftChildIndex < n &&
+                    list[fromIndex + leftChildIndex] > list[fromIndex + index]
+                )
+                    maxIndex = leftChildIndex;
+
+                if(
+                    rightChildIndex < n &&
+                    list[fromIndex + rightChildIndex] >
+                    list[fromIndex + maxIndex]
+                )
+                    maxIndex = rightChildIndex;
+
+                if( index != maxIndex )
+                {
+                    int tmp = list[fromIndex + index];
+                    list[fromIndex + index] = list[fromIndex + maxIndex];
+                    list[fromIndex + maxIndex] = tmp;
+                    index = maxIndex;
+                }
+                else
+                    break;
+            }
+        }
+
+        // Proceed to sorting 'em mushrooms.
+        while( toIndex > fromIndex )
+        {
+            int tmp = list[fromIndex];
+            list[fromIndex] = list[toIndex];
+            list[toIndex] = tmp;
+
+            toIndex--;
+
+            int m = toIndex - fromIndex + 1;
+
+            int index = 0;
+            int maxIndex;
+            int leftChildIndex;
+            int rightChildIndex;
+
+            // Sift down the element located at the root of the heap.
+            while( true )
+            {
+                leftChildIndex = (index << 1) + 1;
+                rightChildIndex = (index + 1) << 1;
+                maxIndex = index;
+
+                if(
+                    leftChildIndex < m &&
+                    list[fromIndex + leftChildIndex] > list[fromIndex + index]
+                )
+                    maxIndex = leftChildIndex;
+
+                if(
+                    rightChildIndex < m &&
+                    list[fromIndex + rightChildIndex] >
+                    list[fromIndex + maxIndex]
+                )
+                    maxIndex = rightChildIndex;
+
+                if( index != maxIndex )
+                {
+                    tmp = list[fromIndex + index];
+                    list[fromIndex + index] = list[fromIndex + maxIndex];
+                    list[fromIndex + maxIndex] = tmp;
+                    index = maxIndex;
+                }
+                else
+                    break;
+            }
+        }
+    }
+
+    /** Returns the median of the three integers.
+     * @param a
+     * @param b
+     * @param c
+     * @return the median of <a,b,c>
+     */
+    private static int median( int a, int b, int c ){
+        if( a <= b )
+        {
+            if( c <= a )
+                return a;
+            else if( c <= b )
+                return c;
+            else
+                return b;
+        }
+        else
+        {
+            if( c <= b )
+                return b;
+            else if( c >= a )
+                return a;
+            else
+                return c;
+        }
+    }
+
+    public static void main( String... args ){
+        int[] list = getRandomList( 16 );
+
+        System.out.print( "Before Introsort: " );
+        println( list );
+
+        Introsort( list );
+        
+        System.out.print( "After Introsort:  " );
+        println( list );
+    }
+
+    static void println( int[] list ){
+        for( int i = 0; i < Math.min( list.length, 20 ); i++ )
+            System.out.print( list[i] + " " );
+
+        System.out.println();
+    }
+
+    static int[] getRandomList( int size ){
+        int[] list = new int[ size ];
+        Random r = new Random();
+
+        for( int i = 0; i < size; i++ )
+            list[i] = r.nextInt( 2 * size );
+
+        return list;
+    }
+}

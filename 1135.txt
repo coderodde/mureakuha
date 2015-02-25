@@ -1,0 +1,118 @@
+#include <windows.h>
+#include <malloc.h>
+#include <stdio.h>
+
+// globaalit vakiot koodilohkoon, 1 lohko vähemmän
+#pragma comment( linker, "-merge:.rdata=.text" )
+#pragma warning( disable: 4996 )
+
+#define DEFAULT_INTERVAL    7000 // ms
+#define BUF_SIZE            0xA 
+
+/**************************************************
+* FreezeLoop                                      *
+*                                                 *
+* Demonstratively freezes the system by capturing *
+* all executing capacity of any core on-board,    *
+* e.g. going real time.                           *
+*                                                 *
+* coderodde, -09                                  * 
+**************************************************/
+
+/****************************************************************************************
+* Vistalaiset, HUOM!                                                                    *
+* Tästä sorsasta koittuva prosessikuva ei saa reaaliaikaista prioriteettiä,             *
+* omistit järjestelmävalvojan oikeuksia vai et (kiitos UAC:n).                          *
+* Näin siis mikäli vain klikkaat/ajat komentoriviltä.                                   *
+*                                                                                       *
+* Keinot:                                                                               *
+* 1. runas                                                                              *
+* 2. muokkaat mukaan upotettavaa manifestia                                             *
+*    (VC++: Release/Debug kansioissa .intermediate.manifest - päätteiset XML-tiedostot) *
+*    Rivillä "<requestedExecutionLevel level='asInvoker' uiAccess='false' />"           *
+*    korvaat attr.arvon 'asInvoker' arvolla 'requireAdministrator'                      *
+****************************************************************************************/
+
+
+static const DWORD dwDefaultInterval = (DWORD)(DEFAULT_INTERVAL);
+
+DWORD WINAPI ThreadProc( LPVOID lpParams );
+
+int WINAPI WinMain( HINSTANCE hInst,
+                    HINSTANCE hPrev,
+                    LPSTR lpCmdLine,
+                    int nShowCmd )
+{
+    DWORD   i;
+    DWORD   nCores;
+    DWORD   dwInit;
+    DWORD   dwInterval;
+    LPSTR   buf         = (LPSTR) calloc( BUF_SIZE, sizeof(char) );
+    
+    // jos löytyy kokonaisluku-tyypinen argumentti, haetaan se
+    // muuten FL loopaa oletuksen mukaisesti, ks. DEFAULT_INTERVAL
+    if( strlen( lpCmdLine ) > 0 )
+        sscanf( lpCmdLine, "%d", &dwInterval );
+    else
+        dwInterval = dwDefaultInterval;
+
+    // tarkoitus on tukkia ikijokaisen ytimen
+    GetEnvironmentVariableA(
+        "NUMBER_OF_PROCESSORS",
+        buf,
+        BUF_SIZE
+        );
+
+    nCores = atoi( buf );   // merkkiesitys kokonaisluvuksi
+    nCores--;               // meillä on jo 1 säie käytössä (pääsäie)
+
+    // haetaan koko prosessille vähän 'extraa'
+    SetPriorityClass(
+        GetCurrentProcess(),
+        REALTIME_PRIORITY_CLASS
+        );
+
+    // ylläoleva ei vielä riitä:
+    // jokaiselle säikeelle haettava omat 'säieprioriteetit'
+    SetThreadPriority(
+        GetCurrentThread(),
+        THREAD_PRIORITY_TIME_CRITICAL
+        );
+
+    for( i = 0; i < nCores; i++ )
+        CreateThread( NULL,
+                      0,
+                      ThreadProc,
+                      NULL,
+                      0,
+                      NULL
+                      );
+
+    // ei-neg. dwInterval:n arvoilla loopataan
+    // sen arvon verran millisekuntia;
+    // muuten loopataan kauemmin
+    if( (int)dwInterval < 0 )
+        while( TRUE ); // ha ha ha
+    else {
+        dwInit = GetTickCount();
+        while( GetTickCount() - dwInit < dwInterval );
+    }
+
+    return 0;
+}
+
+DWORD WINAPI ThreadProc( LPVOID lpParams )
+{
+    // sama rutiini: haetaan etuoikeudet ja hirttosilmukkaan..
+    SetThreadPriority(
+        GetCurrentThread(),
+        THREAD_PRIORITY_TIME_CRITICAL
+        );
+
+    // lisäsäikeissä ei tarvitse huolehtia palaamisesta
+    // nämä lopetetaan kun (ja jos) pääsäie palaa
+    while( TRUE );
+
+    return 0;
+}
+ 

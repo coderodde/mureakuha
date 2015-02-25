@@ -1,0 +1,341 @@
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.Constructor;
+import java.lang.annotation.Annotation;
+
+public class ObjectInfo {
+    
+    public Object object;
+    public Class<?> clazz;
+    public Field[] fields;
+    public Constructor<?>[] constructors;
+    public Method[] methods;
+    public Class<?>[] classes;
+    public Annotation[] annotations;
+
+    private ObjectInfo(
+            Object object,
+            Class<?> clazz,
+            Field[] fields,
+            Constructor<?>[] constructors,
+            Method[] methods,
+            Class<?>[] classes,
+            Annotation[] annotations )
+    {
+        this.clazz = clazz;
+        this.object = object;
+        this.fields = fields;
+        this.methods = methods;
+        this.classes = classes;
+        this.annotations = annotations;
+        this.constructors = constructors;
+    }
+
+    public static ObjectInfo get( Object o ){
+        Class<?> clazz = o.getClass();
+
+        return new ObjectInfo(
+                o,
+                clazz,
+                clazz.getDeclaredFields(),
+                clazz.getDeclaredConstructors(),
+                clazz.getDeclaredMethods(),
+                clazz.getDeclaredClasses(),
+                clazz.getDeclaredAnnotations()
+                );
+    }
+
+    /** Returns a string describing all the stuff in ObjectInfo - instance.
+     *
+     * @return string giving a word on fields, constructors, methods, inner
+     * classes and annotations within the object for which this ObjectInfo was
+     * constructed
+     */
+    public String toString(){
+        // pretty mechanical string building..
+        StringBuilder s = new StringBuilder();
+
+        int num;
+
+        s.append( "Object info for an instance (" );
+        s.append( object );
+        s.append( ") of class " );
+
+        String className = clazz.getCanonicalName();
+
+        s.append( className == null ? clazz.getName() : className );
+        s.append( ":\n\nFields:\n" );
+
+        if( fields.length == 0 )
+            s.append( "N/A\n" );
+
+        num = 1;
+
+        for( Field f : fields )
+        {
+            s.append( num++ );
+            s.append( ". " );
+
+            int m = f.getModifiers();
+
+            String modifierString = Modifier.toString(m);
+            s.append( modifierString );
+
+            if( modifierString.length() > 0 )
+                s.append( " " );
+
+            String typeName = f.getType().getCanonicalName();
+
+            if( typeName == null )
+                typeName = f.getType().getName();
+
+            s.append( typeName );
+            s.append( " " );
+            s.append( f.getName() );
+            s.append( " = " );
+
+            try {
+                s.append( f.get(object) );
+            }
+            catch( IllegalAccessException iae ){
+                s.append( "?" );
+            }
+
+            s.append( "\n" );
+        }
+
+        s.append( "\nConstructors:\n" );
+
+        if( constructors.length == 0 )
+            s.append( "N/A\n" );
+
+        num = 1;
+
+        // there should be always at least the default constructor
+        for( Constructor<?> c : constructors )
+        {
+            s.append( num++ );
+            s.append( ". " );
+            
+            int m = c.getModifiers();
+
+            String modifierString = Modifier.toString(m);
+            s.append( modifierString );
+
+            if( modifierString.length() > 0 )
+                s.append( " " );
+
+            s.append( c.getName() );
+            s.append( "(" );
+
+            Class<?>[] paramTypes = c.getParameterTypes();
+
+            for( int i = 0; i < paramTypes.length - 1; i++ )
+            {
+                String paramType = paramTypes[i].getCanonicalName();
+
+                // getCanonicalName() may return null
+                if( paramType == null )
+                    paramType = paramTypes[i].getName();
+
+                s.append( paramType );
+                s.append( ", " );
+            }
+
+            if( paramTypes.length > 0 )
+            {
+                String paramType = paramTypes[paramTypes.length - 1]
+                        .getCanonicalName();
+
+                if( paramType == null )
+                    paramType = paramTypes[paramTypes.length - 1].getName();
+
+                s.append( paramType );
+            }
+
+            s.append( ")" );
+
+            Class<?>[] exceptionTypes = c.getExceptionTypes();
+
+            if( exceptionTypes.length > 0 )
+            {
+                s.append( " throws " );
+
+                for( int i = 0; i < exceptionTypes.length - 1; i++ )
+                {
+                    s.append( exceptionTypes[i].getName() );
+                    s.append( ", " );
+                }
+
+                if( exceptionTypes.length > 0 )
+                    s.append(
+                            exceptionTypes[exceptionTypes.length - 1]
+                            .getName()
+                            );
+            }
+
+            s.append( "\n" );
+        }
+
+        s.append( "\nMethods:\n" );
+
+        if( methods.length == 0 )
+            s.append( "N/A\n" );
+
+        num = 1;
+
+        for( Method m : methods )
+        {
+            s.append( num++ );
+            s.append( ". " );
+            
+            int modifiers = m.getModifiers();
+
+            String modifierString = Modifier.toString( modifiers );
+            s.append( modifierString );
+
+            if( modifierString.length() > 0 )
+                s.append( " " );
+
+            String returnTypeName = m.getReturnType().getCanonicalName();
+
+            if( returnTypeName == null )
+                returnTypeName = m.getReturnType().getName();
+
+            s.append( returnTypeName );
+            s.append( " " );
+            s.append( m.getName() );
+            s.append( "(" );
+
+            Class<?>[] paramTypes = m.getParameterTypes();
+
+            for( int i = 0; i < paramTypes.length - 1; i++ )
+            {
+                String paramTypeName = paramTypes[i].getCanonicalName();
+
+                if( paramTypeName == null )
+                    paramTypeName = paramTypes[i].getName();
+
+                s.append( paramTypeName );
+                s.append( ", " );
+            }
+
+            if( paramTypes.length > 0 )
+            {
+                String paramTypeName = paramTypes[paramTypes.length - 1]
+                        .getCanonicalName();
+
+                if( paramTypeName == null )
+                    paramTypeName = paramTypes[paramTypes.length - 1]
+                        .getName();
+
+                s.append( paramTypeName );
+            }
+
+            s.append( ")" );
+
+            Class<?>[] exceptionTypes = m.getExceptionTypes();
+
+            if( exceptionTypes.length > 0 )
+            {
+                s.append( " throws " );
+
+                for( int i = 0; i < exceptionTypes.length - 1; i++ )
+                {
+                    s.append( exceptionTypes[i].getName() );
+                    s.append( ", " );
+                }
+
+                if( exceptionTypes.length > 0 )
+                    s.append(
+                            exceptionTypes[exceptionTypes.length - 1]
+                            .getName()
+                            );
+            }
+
+            s.append( "\n" );
+        }
+
+        s.append( "\nClasses:\n" );
+
+        if( classes.length == 0 )
+            s.append( "N/A\n" );
+
+        num = 1;
+
+        for( Class<?> c : classes )
+        {
+            s.append( num++ );
+            s.append( ". " );
+
+            int m = c.getModifiers();
+
+            String modifierString = Modifier.toString(m);
+            s.append( modifierString );
+
+            if( modifierString.length() > 0 )
+                s.append( " " );
+
+            s.append( "class " );
+            s.append( c.getName() );
+
+            Class<?> superClass = c.getSuperclass();
+
+            if( superClass != null )
+            {
+                s.append( " extends " );
+                s.append( superClass.getName() );
+            }
+
+            s.append( "\n" );
+        }
+
+        s.append( "\nAnnotations:\n" );
+
+        if( annotations.length == 0 )
+            s.append( "N/A\n" );
+
+        num = 1;
+
+        for( Annotation a : annotations )
+        {
+            s.append( num++ );
+            s.append( ". " );
+            s.append( a.getClass().getName() );
+            s.append( "\n" );
+        }
+
+        return s.toString();
+    }
+    
+    public static void main( String... args ){
+        ObjectInfo oi = ObjectInfo.get( new Sample( null, null ) );
+        System.out.println( oi );
+    }
+}
+
+class SampleBase {};
+
+class Sample {
+    private final static int salainenVakio = 13;
+    public boolean totuusArvo = true;
+    protected long suojattuArvo = 12L;
+    byte pakkausTavu = 14;
+    Integer[] taulu = new Integer[3];
+
+    private static class InnerStatic {};
+    protected class Inner extends SampleBase {};
+
+    protected Sample() throws IllegalArgumentException, ClassNotFoundException {}
+    Sample( Integer[] i1, int[] i2 ){}
+
+    public final static strictfp float method0()
+            throws ArrayIndexOutOfBoundsException {
+        return 1.0f;
+    }
+
+    protected boolean pretendToDoSomeImportantWork( long[] la, char[] ca ){
+        return false;
+    }
+}

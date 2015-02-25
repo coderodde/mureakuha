@@ -1,0 +1,179 @@
+import java.util.Random;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedList;
+
+public class Main {
+
+    // >Melkein< lineaarisessa ajassa käyvä CountingSort (laskentalajittelu)
+    // mielivaltaisille Java-objekteille. Kuten tiedetään, tavallinen
+    // CountingSort toimii kylläkin lineaarisessa ajassa (mikä vaatii, että
+    // syötelistalle A, max A - min A on sama suuruusluokka kuin |A|), mutta
+    // rajoittuu sortaamaan vain kokonaislukuja. Siksi tämä pätkä.
+    public static <T extends Comparable<T>>
+    void ObjectCountingSort( T[] list ){
+        HashMap<T, LinkedList<T>> map =
+                new HashMap<T, LinkedList<T>>(
+                    1000,
+                    1.05f
+                );
+
+        // Lataa hajautustauluun listat yhtä suuria objekteja.
+        for( T element : list )
+            if( !map.containsKey( element ) )
+            {
+                LinkedList<T> l = new LinkedList<T>();
+                l.addLast( element );
+                map.put( element, l );
+            }
+            else
+                map.get( element ).addLast( element );
+
+        int i = 0;
+        Object[] condensator = new Object[ map.size() ];
+
+        // Lataa tiivistystaulu.
+        for( T element : map.keySet() )
+            condensator[i++] = element;
+
+        // Järjestä tiivistystaulu käyttäen tavanomaista vertailuun perustuvaa
+        // sortausrutiinia. Jos syötelistassa (list) on erittäin paljon toistoa,
+        // tämä kutsu ei vie kuin murto-osan koko menetelmän laskenta-ajasta.
+        // Toisaalta, jos toistoa syötelistassa ei esiinny lainkaan,
+        // ObjectCountingSort() ei ole sopiva rutiini sortaukseen.
+
+        // ObjectCountingSort:n laskennallinen vaativuus on muuten
+        // O(n + m*log m), missä m on ERIsuurten objektien määrä. Tilavaativuus
+        // on \Theta(n + m).
+        Arrays.sort( condensator );
+
+        int index = 0;
+
+        // Ladataan syötelistaan objektit nousevassa järjestyksessä. Koska me
+        // lisätiin yhtäsuuret objektit listoihin samassa järjestyksessä kuin ne
+        // esiintyvät syötetaulukossa, ObjectCountingSort() on stabiili.
+        for( int j = 0; j < condensator.length; j++ )
+            for( T element : map.get( (T) condensator[j] ) )
+                list[index++] = element;
+    }
+
+    // Testiajuri.
+    public static void main(String[] args) {
+        int size = 1000000;
+
+        System.out.println( "Sorting Person - lists of size " + size + "." );
+
+        Person[] list = generatePersonList( size, 1000L );
+        Person[] copy = (Person[]) list.clone();
+
+        long ta = System.currentTimeMillis();
+        Arrays.sort( copy );
+        long tb = System.currentTimeMillis();
+
+        System.out.println( "Arrays.sort() took " + (tb - ta) + " ms." );
+
+        ta = System.currentTimeMillis();
+        ObjectCountingSort( list );
+        tb = System.currentTimeMillis();
+
+        System.out.println( "ObjectCountingSort() took " + (tb - ta) + " ms." );
+        System.out.println( "Sorted lists are equal: " + equals( list, copy ) );
+    }
+
+    // Esimerkkiluokka sortaamista varten. Ei mitään erikoista. Ks. kommenttini,
+    // miten voit sortata korrektisti omia luokkiasi.
+    static class Person implements Comparable<Person> {
+        private String firstName;
+        private String lastName;
+        private int age;
+
+        Person( String firstName, String lastName, int age ){
+            this.firstName = firstName;
+            this.lastName = lastName;
+            this.age = age;
+        }
+
+        public boolean equals( Object other ){
+            if( !(other instanceof Person) )
+                return false;
+
+            return
+                (firstName.compareTo( ((Person) other).firstName ) == 0 &&
+                lastName.compareTo( ((Person) other).lastName ) == 0 &&
+                age == ((Person) other).age);
+        }
+
+        public int hashCode(){
+            StringBuilder b = new StringBuilder();
+
+            b.append( lastName );
+            b.append( firstName );
+            b.append( age );
+
+            return b.toString().hashCode();
+        }
+
+        public int compareTo( Person other ){
+            if( other == null )
+                return -1;
+
+            int key1 = lastName.compareTo( other.lastName );
+
+            if( key1 != 0 )
+                return key1;
+            else
+            {
+                int key2 = firstName.compareTo( other.firstName );
+
+                return (key2 != 0) ?
+                    key2 :
+                    age - other.age;
+            }
+        }
+    }
+
+    // Työkalu vaan.. Generoi enintään 5 * 5 * 51 = 1275 erisuurta objektia,
+    // joten melkein kannattaa sortata ObjectCountingSort():lla.
+    static Person[] generatePersonList( int size, long seed ){
+        Person[] list = new Person[ size ];
+
+        String[] firstNames = {
+            "Jack",
+            "Alice",
+            "Jill",
+            "Derik",
+            "Chris"
+        };
+
+        String[] lastNames = {
+            "Calley",
+            "Richardson",
+            "Wattson",
+            "Kelvin",
+            "Carney"
+        };
+
+        Random r = new Random( seed );
+
+        for( int i = 0; i < list.length; i++ )
+            list[i] = new Person(
+                    firstNames[ r.nextInt( firstNames.length ) ],
+                    lastNames[ r.nextInt( lastNames.length ) ],
+                    10 + r.nextInt( 51 ) // iät väliltä 10 - 60
+                    );
+
+        return list;
+    }
+
+    // Työkalu vaan..
+    static boolean equals( Person[] ps1, Person[] ps2 ){
+        if( ps1.length != ps2.length )
+            return false;
+
+        for( int i = 0; i < ps1.length; i++ )
+            if( ps1[i] != ps2[i] )
+                return false;
+
+        return true;
+    }
+}

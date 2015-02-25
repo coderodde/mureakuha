@@ -1,0 +1,378 @@
+/**************
+* File: map.h *
+**************/
+
+#ifndef _MAP_H
+#define _MAP_H
+#include <stddef.h>
+
+typedef struct mapping_t {
+    struct mapping_t* next; // next mapping in the collision chain
+    void* key;
+    void* value;
+} mapping_t, *pmapping_t;
+
+typedef struct map_t {
+    size_t      max;        // max. amount of mappings before rehashing
+    size_t      size;       // amount of mappings in the map
+    size_t      capacity;   // size of mapping table
+    float       lfactor;    // load factor
+    pmapping_t* table;      // table of mappings
+} map_t, *pmap_t;
+
+pmap_t      map_t_alloc         ( size_t size, float lf );
+void        map_t_free          ( pmap_t map );
+
+int         map_t_insert        ( pmap_t map, void* key, void* value );
+int         map_t_has_key       ( pmap_t map, void* key );
+void*       map_t_get           ( pmap_t map, void* key );
+int         map_t_delete        ( pmap_t map, void* key );
+void**      map_t_get_key_set   ( pmap_t map );
+size_t      map_t_size          ( pmap_t map );
+void        map_t_print_debug   ( pmap_t map );
+
+#endif /* _MAP_H */
+
+/**************
+* File: map.c *
+**************/
+
+#include "map.h"
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#define FALSE 0
+#define TRUE 1
+
+const size_t DEFAULT_SIZE = 10;
+const float MIN_LOAD_FACTOR = .1f;
+const float MAX_LOAD_FACTOR = 1.f;
+
+/***********************************************************************
+* Allocates a new hash map capable to fit code:size amount of mappings *
+* without rehashing.                                                   *
+***********************************************************************/
+pmap_t map_t_alloc( size_t size, float load_factor ){
+    pmap_t pm = (pmap_t) malloc( sizeof( map_t ) );
+
+    if( pm == NULL )
+        return NULL;
+
+    if( load_factor < MIN_LOAD_FACTOR )
+        load_factor = MIN_LOAD_FACTOR;
+
+    if( load_factor > MAX_LOAD_FACTOR )
+        load_factor = MAX_LOAD_FACTOR;
+
+    if( size < DEFAULT_SIZE )
+        size = DEFAULT_SIZE;
+
+
+    pm->size     = 0;
+    pm->lfactor  = load_factor;
+    pm->max      = size;
+    pm->capacity = (int)( size / load_factor );
+    pm->table    = (pmapping_t*) calloc( pm->capacity, sizeof(pmapping_t) );
+
+    if( pm->table == NULL )
+    {
+        free( pm );
+        return NULL;
+    }
+
+    return pm;
+}
+
+/************************************************************************
+* Deletes the table and mapping structures. It is the responsibility of *
+* a client programmer to deallocate keys and values.                    *
+************************************************************************/
+void map_t_free( pmap_t map ){
+    pmapping_t pmapping;
+    pmapping_t next;
+    unsigned int i;
+
+    if( map == NULL )
+        return;
+
+    for( i = 0; i < map->capacity; i++ )
+        for( pmapping = map->table[i]; pmapping != NULL; )
+        {
+            next = pmapping->next;
+            free( pmapping );
+            pmapping = next;
+        }
+}
+
+/************************************************
+* Produces a hash value from the specified key. *
+************************************************/
+static unsigned int hash( void* key ){
+    unsigned int byte0 = (unsigned int) key & 0xff ;
+    unsigned int byte1 = (unsigned int) key & 0xff00 ;
+    unsigned int byte2 = (unsigned int) key & 0xff0000 ;
+    unsigned int byte3 = (unsigned int) key & 0xff000000 ;
+
+    byte0 <<= 16;
+    byte2 >>= 16;
+    byte1 <<= 16;
+    byte3 >>= 16;
+
+    return (byte0 | byte1 | byte2 | byte3);
+}
+
+/***********************************************************
+* Extends the mapping table and rehashes all the mappings. *
+***********************************************************/
+static void map_t_rehash( pmap_t map ){
+    pmapping_t*     new_table;
+    pmapping_t      pentry;
+    size_t          old_capacity;
+    size_t          i;
+    unsigned int    index;
+
+    if( map == NULL )
+        return;
+
+    old_capacity = map->capacity;
+    map->capacity *= 1.5f;
+    map->max = (size_t)( map->capacity * map->lfactor );
+
+    new_table = (pmapping_t*) calloc( map->capacity, sizeof(pmapping_t) );
+
+    for( i = 0; i < old_capacity; i++ )
+        while( map->table[i] != NULL )
+        {
+            pentry              = map->table[i];
+            map->table[i]       = pentry->next;
+            index               = hash( pentry->key ) % map->capacity;
+            pentry->next        = new_table[index];
+            new_table[index]    = pentry;
+        }
+
+    free( map->table );
+    map->table = new_table;
+}
+
+/****************************************************************************
+* Inserts a key/value - pair into the hash map. Returns a positive value if *
+* updating the hash map took place, zero otherwise.                         *
+****************************************************************************/
+int map_t_insert( pmap_t map, void* key, void* value ){
+    pmapping_t      pentry;
+    unsigned int    index;
+
+    if( map == NULL )
+        return FALSE;
+
+    if( map->size == map->max )
+        map_t_rehash( map );
+
+    index = hash( key ) % map->capacity;
+
+    /* see whether the mapping with the key specified is already there */
+    for( pentry = map->table[index]; pentry != NULL; pentry = pentry->next )
+        if( pentry->key == key )
+        {
+            pentry->value = value;
+            return TRUE;
+        }
+
+    pentry = (pmapping_t) calloc( 1, sizeof(mapping_t) );
+
+    if( pentry == NULL )
+        return FALSE;
+
+    pentry->key = key;
+    pentry->value = value;
+    pentry->next = map->table[index];
+
+    map->table[index] = pentry;
+    map->size++;
+
+    return TRUE;
+}
+
+/***************************************************************************
+* Returns the mapping containing key code:key. Returns NULL if there is no *
+* such mapping.                                                            *
+***************************************************************************/
+static pmapping_t map_t_get_mapping( pmap_t map, void* key ){
+    unsigned int index;
+    pmapping_t   pentry;
+    
+    if( map == NULL )
+        return NULL;
+    
+    index = hash( key ) % map->capacity;
+    
+    for( pentry = map->table[index]; pentry != NULL; pentry = pentry->next )
+        if( pentry->key == key )
+            return pentry;
+    
+    return NULL;
+}
+
+/***************************************************************************
+* Queries for existence of a mapping with key code:key. Returns a positive *
+* value if a mapping contains this key, zero otherwise                     *
+***************************************************************************/
+int map_t_has_key( pmap_t map, void* key ){
+    pmapping_t pentry = map_t_get_mapping( map, key );
+    return pentry == NULL ? FALSE : TRUE;
+}
+
+/**************************************
+* Gets the value associated with key. *
+**************************************/
+void* map_t_get( pmap_t map, void* key ){
+    pmapping_t pentry = map_t_get_mapping( map, key );
+    return pentry == NULL ? NULL : pentry->value;
+}
+
+/*****************************************************************************
+* Deletes a mapping with the key code:key. Returns positive value if removal *
+* took place, zero otherwise.                                                *
+*****************************************************************************/
+int map_t_delete( pmap_t map, void* key ){
+    unsigned int index;
+    pmapping_t   pentry;
+    pmapping_t   pprev;
+
+    if( map == NULL )
+        return FALSE;
+
+    index = hash( key ) % map->capacity;
+
+    for( pprev = NULL, pentry = map->table[index]; pentry != NULL; )
+    {
+        if( pentry->key == key )
+        {
+            if( pprev == NULL )
+                map->table[index] = pentry->next;
+            else
+                pprev->next = pentry->next;
+
+            map->size--;
+            free( pentry );
+            return TRUE;
+        }
+
+        pprev = pentry;
+        pentry = pentry->next;
+    }
+
+    return FALSE;
+}
+
+/***************************************************
+* Returns an array containing the keys of the map. *
+***************************************************/
+void** map_t_get_key_set( pmap_t map ){
+    size_t      i;
+    size_t      j;
+    void**      keyset;
+    pmapping_t  pentry;
+
+    if( map == NULL )
+        return NULL;
+
+    keyset = (void**) calloc( map->size, sizeof(void*) );
+
+    if( keyset == NULL )
+        return NULL;
+
+    for( j = 0, i = 0; i < map->capacity; i++ )
+        for( pentry = map->table[i]; pentry != NULL; pentry = pentry->next )
+            keyset[j++] = pentry->key;
+
+    return keyset;
+}
+
+/**********************************************
+* Returns the amount of key/value - mappings. *
+**********************************************/
+size_t map_t_size( pmap_t map ){
+    return map == NULL ? 0 : map->size;
+}
+
+/***********************
+* Prints a table dump. *
+***********************/
+void map_t_print_debug( pmap_t map ){
+    size_t i;
+    size_t table_size;
+    pmapping_t pentry;
+
+    if( map == NULL )
+        return;
+
+    for( table_size = map->capacity, i = 0; i < table_size; i++ )
+    {
+        printf("table[%d]: ", i);
+
+        for( pentry = map->table[i]; pentry != NULL; pentry = pentry->next )
+            printf("[%p -> %p] ", pentry->key, pentry->value );
+
+        printf("\n");
+    }
+}
+
+/***************
+* File: main.c *
+***************/
+
+#include "map.h"
+#include <stdio.h>
+
+int main( void ) {
+    int     i;
+    size_t  size;
+    void**  keyset;
+    pmap_t  map;
+
+    map = map_t_alloc( 10, 1.f );
+
+    if( map == NULL )
+        return -1;
+
+    for( i = -4; i < 6; i++ )
+        map_t_insert( map, i, 0xD );
+
+    printf( "size of map: %d\n", map_t_size( map ) );
+    printf( "contains key 5: %d\n", map_t_has_key( map, 5 ) );
+    printf( "contains key 6: %d\n", map_t_has_key( map, 6 ) );
+    printf( "value associated with 5: %d\n", map_t_get( map, 5 ) );
+
+    map_t_print_debug( map );
+
+    puts( "\nadding one more key, there will be rehashing.." );
+
+    map_t_insert( map, 6, "Heslinki" );
+    map_t_print_debug( map );
+
+    printf( "value associated with 6: %s\n", map_t_get( map, 6 ) );
+
+    puts( "Deleting key 6.." );
+    map_t_delete( map, 6 );
+    printf( "contains key 6: %d\n", map_t_has_key( map, 6 ) );
+
+    keyset = map_t_get_key_set( map );
+    size = map_t_size( map );
+
+    puts( "Listing the keys and values:" );
+
+    for( i = 0; i < (int) size; i++ )
+        printf(
+                "key = %2d, value = %d\n",
+                keyset[i],
+                map_t_get( map, keyset[i] )
+        );
+
+    puts( "---\nDeleting the map.." );
+    map_t_free( map );
+    
+    getchar();
+    return 0;
+}

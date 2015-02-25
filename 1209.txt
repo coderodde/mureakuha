@@ -1,0 +1,133 @@
+//// ////////////////////
+ // File: container.h //
+//////////////////// ////
+
+#ifndef CONTAINER_H
+#define CONTAINER_H
+
+template< class T >
+class Container {
+protected:
+    T* table;
+    unsigned size;
+    unsigned capacity;
+
+public:
+	class NoSuchElementError {};
+
+    Container() :
+        size(0),
+        capacity( INITIAL_CAPACITY ),
+        table( new T[INITIAL_CAPACITY] ) {};
+
+    ~Container(){ delete[] table; }
+    
+    unsigned length(){ return size; }
+
+    void push_back( const T& element ){
+        if( size == capacity )
+        {
+            capacity *= 1.5f;
+            T* newTable = new T[capacity];
+
+            for( int i = 0; i < size; i++ )
+                newTable[i] = table[i];
+
+            delete[] table;
+            table = newTable;
+        }
+
+        table[size++] = element;
+    }
+
+    T pop_back(){
+        if( size == 0 )
+            throw new NoSuchElementError();
+
+        return table[--size];
+    }
+    
+    enum { INITIAL_CAPACITY = 32 };
+    
+    // 1. ensin on esiteltävä käytettävä iteraattorityyppi
+    class iterator; 
+    // 2. sitten on määriteltävä kokoelmaluokan ystäväksi
+    friend class iterator;
+    // 3. nyt voi ruveta määrittelemään
+    class iterator {
+    protected:
+        int index;            // sijainti on muistettava
+        Container& container; // omistajakokoelma myös
+
+    public:
+        iterator( Container& c ) : container(c), index(0) {}
+        iterator( Container& c, char end ) : container(c), index( c.size ) {}
+
+		// dereferoi this-iteraattorin
+        T operator*(){
+            if( index >= 0 && index < container.size )
+                return container.table[index];
+            else
+                throw new NoSuchElementError();
+        }
+
+		// siirtää iteraattorin osoittamaan seuraava alkiota, jos sellainen on
+        iterator& operator++(){
+            if( index < container.size )
+                index++;
+
+            return *this;
+        }
+
+        iterator& operator++( int ){ return operator++(); }
+
+        iterator& operator+=( int steps ){
+            if( index + steps > container.size )
+                index = container.size;
+            else if( index + steps < 0 )
+                index = 0;
+            else
+                index += steps;
+
+            return *this;
+        }
+
+        bool operator==( const iterator& right ){ return index == right.index; }
+        bool operator!=( const iterator& right ){ return index != right.index; }
+    };
+
+    // nämä kaksi metodia palauttavat iteraattorit kokoelman ensimmäiseen ja
+    // viimeistä seuraavaan alkioon, vastaavasti
+    iterator begin(){ return iterator( *this ); }
+    iterator end(){ return iterator( *this, 'e' ); }
+};
+
+#endif	// CONTAINER_H
+
+//// /////////////////
+ // File: main.cpp //
+///////////////// ////
+
+#include "container.h"
+#include <iostream>
+
+using std::cout;
+using std::endl;
+using std::cin;
+
+int main() {
+    Container<int> container;
+    
+    for( int i = 1; i <= 33; i++ )
+        container.push_back( i );
+
+    Container<int>::iterator iter = container.begin();
+    Container<int>::iterator end = container.end();
+
+    // ++iter++, siirry 2 alkiota eteenpäin
+    for(; iter != end; ++iter++ )
+        cout << *iter << endl;
+
+    cin.get();
+    return 0;
+}

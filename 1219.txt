@@ -1,0 +1,318 @@
+import java.util.Arrays;
+import java.util.Random;
+
+public class Main {
+
+    /** This class acts as a sublist descriptor. */
+    static class Partition {
+        int from;
+        int to;
+        
+        Partition( int from, int to ){
+            this.from = from;
+            this.to = to;
+        }
+    }
+
+    /** This class implements a non-traditional minimum heap. A sublist
+     * descriptor (a Partition-object partitions[i]) is said to be minimum if
+     * for that object code:list[partitions[i].from] is the minimum compared to
+     * all other code:list[partition[j].from] where j != i.
+     * @param <T> the element type of the sublists
+     */
+    static class Heap<T extends Comparable<T>> {
+        private T[] list;
+        private Partition[] partitions;
+        private int size;
+
+        /** Constructs an empty heap capable to store arg:size amount of sublist
+         * descriptors.
+         * @param size the capacity of the heap
+         * @param list the list from which to peek the values for comparisons in
+         * underlying algorithms
+         */
+        Heap( int size, T[] list ){
+            partitions = new Partition[size];
+            this.size = 0;
+            this.list = list;
+        }
+
+        /** Returns the minimum value of the heap. */
+        T min(){
+            return list[partitions[0].from];
+        }
+
+        /** Removes the minimum value from the minimum sublist descriptor and
+         * sets a new descriptor as a minimum one if needed.
+         */
+        void inc(){
+            if( partitions[0].from == partitions[0].to )
+            {
+                // the sublist descriptor at the root of the heap is fully
+                // processed, remove.
+                Partition last = partitions[size - 1];
+                partitions[0] = last;
+                last.from--;
+                size--;
+                inc();
+            }
+            else
+            {
+                ++partitions[0].from;
+                int nodeIndex = 0;
+                int leftChildIndex = 1;
+                int rightChildIndex = 2;
+                int minIndex = 0;
+
+                while( true )
+                {
+                    if( leftChildIndex < size &&
+                        list[partitions[leftChildIndex].from].compareTo(
+                        list[partitions[nodeIndex].from]
+                        ) < 0
+                    )
+                        minIndex = leftChildIndex;
+
+                    if( rightChildIndex < size &&
+                        list[partitions[rightChildIndex].from].compareTo(
+                        list[partitions[minIndex].from]
+                        ) < 0
+                    )
+                        minIndex = rightChildIndex;
+
+                    if( minIndex == nodeIndex )
+                        // the node being sifted is the minimum one,
+                        // MinHeap - property satisfied, return.
+                        return;
+                    else
+                    {
+                        // sift down the node
+                        int oldNodeIndex = nodeIndex;
+                        nodeIndex = minIndex;
+                        Partition node = partitions[minIndex];
+                        partitions[minIndex] = partitions[oldNodeIndex];
+                        partitions[oldNodeIndex] = node;
+                        leftChildIndex = (nodeIndex << 1) + 1;
+                        rightChildIndex = (nodeIndex + 1) << 1;
+                    }
+                }
+            }
+        }
+
+        /** Inserts a sublist descriptor into the heap. Works analogously to
+         * the minimum heap insertion, so the complexity is O(log n) where n is
+         * the amount of sublist descriptors in the list.
+         * @param p the sublist descriptor to insert
+         */
+        void insert( Partition p ){
+            int nodeIndex = size;
+            // insert the new node at the bottom of the heap
+            partitions[nodeIndex] = p;
+            size++;
+
+            while( true )
+            {
+                int parentIndex = (nodeIndex - 1) >> 1;
+                if( parentIndex < 0 ) return;
+
+                if( list[partitions[parentIndex].from].compareTo(
+                    list[partitions[nodeIndex].from]
+                    ) > 0
+                )
+                {
+                    // sift up the node
+                    Partition tmp = partitions[parentIndex];
+                    partitions[parentIndex] = partitions[nodeIndex];
+                    partitions[nodeIndex] = tmp;
+                    nodeIndex = parentIndex;
+                }
+                else
+                    return;
+            }
+        }
+    }
+
+    /** Reverses a sublist within the list code:V.
+     * @param <T> the type of the list element
+     * @param V the list to reverse within
+     * @param p the sublist descriptor
+     */
+    static <T> void reversePartition( T[] V, Partition p )
+    {
+        for( int i = p.from, j = p.to; i < j; i++, j-- )
+        {
+            T temp = V[i];
+            V[i] = V[j];
+            V[j] = temp;
+        }
+    }
+
+    /** Sorts non-stably the argument list. The algorithm scans through the list
+     * and establishes a minimum heap of sublists (described by Partition -
+     * objects). As a strictly descending sublist is scanned, it gets reversed.
+     * When the entire list is scanned, the algorithm proceeds to extracting
+     * minimum values from the heap and putting them at an increasing location
+     * until code:V.length minimums are extracted from the heap.
+     * @param <T> the type of list elements
+     * @param V the list to sort
+     */
+    public static <T extends Comparable<T>> void HeapSelectionSort( T[] V ){
+        T[] W = (T[]) V.clone();
+
+        // Create the heap working on the backing list with the size of the
+        // heap set to its virtual maximum (the lists W and V may contain at
+        // most Math.ceil( 1.0 * W.length / 2 ) runs).
+        Heap<T> H = new Heap<T>( W.length / 2 + 1, W );
+
+        int head = 0;
+        int left = 0;
+        int right = 1;
+
+        boolean searching = true;
+        boolean ascending = true;
+
+        // Scan the clone list and load the heap with the partitions that are
+        // reversed to comprise only ascending runs. In the for - loop below,
+        // var:head points to the beginning element index of a run being
+        // scanned, var:searching tells whether we just trying to determine the
+        // beginning of the new run, var:ascending tells whether the run being
+        // scanned satisfies the condition W[head] <= W[head+1] <= ... <= W[left].
+        for(; right <= W.length; left++, right++ )
+        {
+            if( searching )
+            {
+                if( right == V.length )
+                {
+                    H.insert( new Partition( left, left ) );
+                    break;
+                }
+
+                // W[left] <= W[right]
+                ascending =
+                        W[left].compareTo( W[right] ) <= 0 ?
+                            true :
+                            false;
+                head = left;
+                searching = false;
+            }
+            else
+            {
+                if( right == V.length )
+                {
+                    Partition p = new Partition( head, left );
+                    // W[head] > W[left]; descending run detected, reverse.
+                    if( W[head].compareTo( W[left] ) > 0 )
+                        reversePartition( W, p );
+
+                    H.insert( p );
+                    break;
+                }
+
+                if( ascending )
+                {
+                    // W[left] > W[right]
+                    if( W[left].compareTo( W[right] ) > 0 )
+                    {
+                        // We came to the end of an ascending run.
+                        searching = true;
+                        H.insert( new Partition( head, left ) );
+                    }
+                }
+                // W[left] <= W[right]
+                else if( W[left].compareTo( W[right] ) <= 0 )
+                {
+                    // We came to the end of a descending run. Trigger the
+                    // searching mode on and store the run descriptor into the
+                    // heap.
+                    searching = true;
+                    Partition p = new Partition( head, left );
+                    // The run is descending, reverse.
+                    reversePartition( W, p );
+                    H.insert( p );
+                }
+            }
+        }
+
+        int i = 0;
+
+        // Just load the argument list with the minimums.
+        // Most of the work is done by H.inc().
+        while( i < V.length )
+        {
+            V[i++] = H.min();
+            H.inc();
+        }
+    }
+
+    public static void main( String... args ) {
+        int length = 10;
+        Integer[] list1 = getRandomList( length );
+
+        System.out.println("Sorting a small random list:");
+        System.out.print("Before: ");
+        println( list1 );
+        HeapSelectionSort( list1 );
+
+        System.out.print("After:  ");
+        println( list1 );
+        System.out.println();
+
+        length = 1000000;
+        list1 = getPartiallySortedList( length, 20 );
+        Integer[] list2 = (Integer[]) list1.clone();
+
+        long ta;
+        long tb;
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        System.out.println("Arrays.sort() took " + (tb - ta) + " ms.");
+
+        ta = System.currentTimeMillis();
+        HeapSelectionSort( list2 );
+        tb = System.currentTimeMillis();
+
+        System.out.println("HeapSelectionSort() took " + (tb - ta) + " ms.");
+
+        System.out.println("Sorted lists are equal: " + equals(list1, list2));
+    }
+
+    private static void println( Integer[] list ){
+        for( int i = 0; i < list.length; i++ )
+            System.out.print( list[i] + " " );
+
+        System.out.println();
+    }
+
+    static Integer[] getPartiallySortedList( int size, int runs ){
+        Integer[] array = new Integer[ size ];
+
+        for( int i = 0; i < size; i++ )
+            array[i] = i % (size / runs);
+
+        return array;
+    }
+
+    static Integer[] getRandomList( int size ){
+        Integer[] array = new Integer[ size ];
+        Random r = new Random();
+
+        for( int i = 0; i < size; i++ )
+            array[i] = r.nextInt( size );
+
+        return array;
+    }
+
+    static <T> boolean equals( T[] l1, T[] l2 ){
+        if( l1.length != l2.length )
+            return false;
+
+        for( int i = 0; i < l1.length; i++ )
+            if( !l1[i].equals( l2[i] ) )
+                return false;
+
+        return true;
+    }
+}

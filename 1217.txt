@@ -1,0 +1,92 @@
+public class Potenssirekursio {
+   
+    /** Laskee kannan eksponentin ajassa O(log n), missä n = eksponentti.
+     * @param kanta korotettava reaaliluku
+     * @param eksponentti potenssi
+     * @return lausekkeen "(kanta)^(eksponentti)" arvo
+     */
+    public static double potenssi( double kanta, int eksponentti ){
+        if( eksponentti < 0 )
+        {
+            // negatiivinen eksponentti, lasketaan
+            // 1 / potenssi( kanta, -eksponentti );
+            return 1.0 / potenssi( kanta, -eksponentti );
+        }
+       
+        if( eksponentti == 0 )
+        {
+            if( kanta == 0.0 )
+                // 0^0 ei ole määritelty
+                return Double.NaN;
+           
+            return 1.0;
+        }
+       
+        if( eksponentti == 1 )
+            return kanta;
+       
+        // laske puolikas eksponentista, "divide problem"
+        double apu = potenssi( kanta, eksponentti / 2 );
+       
+        // "and conquer"
+        if( eksponentti % 2 == 1 )
+            return apu * apu * kanta;
+        else
+            return apu * apu;
+    }
+   
+    public static void main( String... args ){
+        System.out.println("2^4 = " + potenssi( 2, 4 ));
+        System.out.println("2^(-3) = " + potenssi( 2, -3 ));
+        System.out.println("(-2)^(-3) = " + potenssi( -2, -3 ));
+        System.out.println("(-2)^0 = " + potenssi( -2, 0 ));
+        System.out.println("0^0 = " + potenssi( 0, 0 ));
+        System.out.println("0^(-2) = " + potenssi( 0, -2 ));
+        
+        long ta;
+        long tb;
+        
+        int l = 1000000;
+        System.out.println("Profiling the power functions:");
+        
+        ta = System.currentTimeMillis();
+        for( int i = 0; i < l; i++ )
+            Math.pow( 2.0, 10.0 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println(
+                "Math.pow( 2.0, 10.0 ) took " + (tb-ta) +
+                " ms and returned: " + Math.pow( 2.0, 10.0 )
+                );
+        
+        ta = System.currentTimeMillis();
+        for( int i = 0; i < l; i++ )
+            Math.pow( 2.0, 20.0 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println(
+                "Math.pow( 2.0, 20.0 ) took " + (tb-ta) +
+                " ms and returned: " + Math.pow( 2.0, 20.0 )
+                );
+        
+        ta = System.currentTimeMillis();
+        for( int i = 0; i < l; i++ )
+            potenssi( 2.0, 10 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println(
+                "potenssi( 2.0, 10 ) took " + (tb-ta) +
+                " ms and returned: " + potenssi( 2.0, 10 )
+                );
+        
+        ta = System.currentTimeMillis();
+        for( int i = 0; i < l; i++ )
+            potenssi( 2.0, 20 );
+        tb = System.currentTimeMillis();
+        
+        System.out.println(
+                "potenssi( 2.0, 20 ) took " + (tb-ta) +
+                " ms and returned " + potenssi( 2.0, 20 )
+                );
+    }
+}

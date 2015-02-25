@@ -1,0 +1,171 @@
+#include<stdio.h>
+#include<string.h>
+#include<stdlib.h>
+#include<malloc.h>
+
+#define FALSE 0
+#define TRUE ~FALSE
+
+/*******************************************************************************
+* n           - problem instance; e.g. 1x1, 2x2, ..., nxn                      *
+* queen       - an n-array; describes on-going positioning                     *
+* nSolved     - solutions so far                                               *
+* endBar      - will be useful for printing                                    *
+* midBar      - see above                                                      *
+* emptySquare - a string to fill empty cells with                              *
+* ...                                                                          *
+*******************************************************************************/
+
+/** A WORD ABOUT queen - array *************************************************
+* contains n integers so that index of the array corresponds to the row index  *
+* from { 0, ..., n - 1 }, whereas queen[i] belongs to the set { 1, ..., n }    *                                                        *
+*******************************************************************************/
+
+const unsigned NDEFAULT = 8;
+
+static int          n;
+static unsigned*    queen;
+
+static unsigned     nSolved;
+static char*        endBar;
+static char*        midBar;
+static char*        emptySquare;
+static char*        filledSquare;
+
+void putout         ( unsigned solution_id );
+void putoutReversed ( unsigned solution_id );
+void __impl_putout  ( unsigned solution_id, int b_reverse );
+int  check          ( int row );
+void solve          ( int row );
+
+int main( int argc, char* argv[] )
+{
+    int i;
+    int barLength;
+    nSolved = 0;
+
+    n = (argc > 1) ? atoi( argv[1] ) : NDEFAULT;
+
+    /** correct the non-sense **/
+    if( n < 1 ) n = NDEFAULT;
+
+    queen = (unsigned*) calloc( n, sizeof(unsigned) );
+
+    /** these need not be of a particular format                    **/
+    /** as long as ..Squares are of equal length, everything's o.k. **/
+    emptySquare  = "|   ";
+    filledSquare = "| X ";
+
+    endBar = (char*) malloc(
+            barLength = ((strlen(emptySquare)) * n + 2) * sizeof(char)
+            );
+    midBar = (char*) malloc( barLength );
+
+    endBar[ barLength - 1] =
+    midBar[ barLength - 1] = 0;
+
+    for( i = 0; i < barLength - 1; i++ )
+    {
+        endBar[i] = '-';
+        midBar[i] = '-';
+    }
+
+    for( i = 0; i < n + 1; i++ )
+        midBar[i * strlen(emptySquare)] = '|';
+
+    solve( 0 );
+
+    printf("Total solutions: %u\n", nSolved );
+    
+    return EXIT_SUCCESS;
+}
+
+
+void solve( int row )
+{
+    int i;
+
+    /** rows {0, 1, ..., n-1} are solved **/
+    if( row == n )
+    {
+        putout( ++nSolved );
+
+        if( queen[0] <= n / 2 )
+            putoutReversed( ++nSolved );
+
+        return;
+    }
+
+    if( queen[row] > n || queen[0] > n / 2 + n % 2 )
+        return;
+
+    for( i = 1; i <= n; i++ )
+    {
+        queen[row] = i;
+        if( check(row) )
+            solve( row + 1 );
+    }
+}
+
+int check( int row )
+{
+    int i;
+    /** CHECK VERTICAL EXCLUSIONS UPWARDS    **/
+    /** BOARD BELOW THE row ISN'T FILLED YET **/
+    for( i = 0; i < row; i++ )
+        if( queen[i] == queen[row] )
+            return FALSE;
+
+    /** CHECK DIAGONAL EXCLUSIONS **/
+    for( i = 1; i <= row; i++ )
+    {
+        /** TOPLEFT - BOTTOMRIGHT DIAGONAL **/
+        if( queen[row - i] == queen[row] - i )
+            return FALSE;
+
+        /** TOPRIGHT - BOTTOMLEFT DIAGONAL **/
+        if( queen[row - i] == queen[row] + i )
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+void __impl_putout( unsigned kSolution, int reverse )
+{
+    int i;
+    int j;
+
+    printf( "Solution %u:\n"
+            "%s\n",
+            kSolution,
+            endBar
+            );
+
+    /** depending on reverse-argument, individual rows will **/
+    /** be printed from left to right or right to left      **/
+    for( i = 0; i < n; i++ )
+    {
+        /** more code, less execution overhead **/
+        if( !reverse )
+            for( j = 1; j <= n; j++ )
+                printf( queen[i] == j ? filledSquare : emptySquare );
+        else
+            for( j = n ; j > 0; j-- )
+                printf( queen[i] == j ? filledSquare : emptySquare );
+
+        printf( "|\n%s\n", i < n - 1 ? midBar : endBar );
+    }
+
+    printf("\n");
+}
+
+void putout( unsigned kSolution )
+{
+    __impl_putout( kSolution, FALSE );
+}
+
+void putoutReversed( unsigned kSolution )
+{
+    __impl_putout( kSolution, TRUE );
+}

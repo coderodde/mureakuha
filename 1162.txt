@@ -1,0 +1,100 @@
+// P extends Comparable<P> ~ any type (referred to as type P) that implements interface java.lang.Comparable
+public class PriorityQueue< T, P extends Comparable<P> >
+{
+    private class Node<T, P>
+    {
+        P priority;
+        T datum;
+        Node<T, P> next;
+        
+        Node( T datum, P priority )
+        {
+            // we have to obtain some non-null priority
+            if( priority == null )
+                throw new NullPointerException();
+            
+            this.priority = priority;
+            this.datum = datum;
+        }
+    }
+    
+    private Node<T, P> head;
+    private Node<T, P> tail;
+    
+    public void enqueue( T datum, P priority )
+    {        
+        Node<T, P> newnode = new Node<T, P>( datum, priority );
+        Node<T, P> prev_iterator = null;
+        Node<T, P> iterator = head;
+
+        // search for the first node with the lower priority than newnode's
+        while( iterator != null && iterator.priority.compareTo(priority) != -1 )
+        {
+            prev_iterator = iterator;
+            iterator = iterator.next;
+        }
+        
+        if( iterator != null )
+        {
+            // our new node doesn't have the lowest priority
+
+            if( prev_iterator != null )
+            {
+                // insert into proper location between prev_iterator and iterator
+                prev_iterator.next = newnode;
+                newnode.next = iterator;
+            }
+            else
+            {
+                // our new node has the top priority
+                newnode.next = head;
+                head = newnode;
+            }
+        }
+        else if( head != null )
+        {
+            // our new node has the lowest priority, insert after tail
+            tail.next = newnode;
+            tail = newnode;
+        }
+        else
+        {
+            // our new node is the only node in the queue
+            tail = head = newnode;
+        }
+    }
+
+    public T dequeue()
+    throws Exception
+    {
+        if( head == null )
+            throw new Exception("underflow");
+
+        Node<T, P> ret = head;
+        head = head.next;
+
+        ret.next = null;
+        return ret.datum;
+    }
+
+    public boolean isEmpty()
+    {
+        return head == null;
+    }
+
+    public static void main(String... args)
+    throws Exception
+    {
+        PriorityQueue<Integer, Integer> pq
+                = new PriorityQueue<Integer, Integer>();
+
+        // some test cases
+        for( int i = 0; i < 10; i++ ) pq.enqueue(i, i);
+        for( int i = 0; i < 4; i++ ) pq.enqueue(55 + i, 5);
+        pq.enqueue(100, -1);
+        pq.enqueue(-100, 10);
+
+        while(!pq.isEmpty())
+            System.out.println(pq.dequeue());
+    }
+}

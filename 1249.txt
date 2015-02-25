@@ -1,0 +1,425 @@
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.PriorityQueue;
+import java.util.Random;
+
+/**
+ *
+ * @author coderodde
+ */
+public class Main {
+
+    /**
+     * IDA*...
+     *
+     * @param source the source node.
+     * @param target the target node.
+     *
+     * @return the shortest path from source to target, or null if target
+     * unreachable from source.
+     */
+    public static LinkedList<Node> IDAStar(Node source, Node target) {
+        double costLimit = source.getHeuristicEstimate(target);
+        LinkedList<Node> path = new LinkedList<Node>();
+        path.addLast(source);
+
+        for (;;) {
+            Tuple<LinkedList<Node>, Double> tuple =
+                    IDAStarImpl(0.0, path, costLimit, target);
+
+            if (tuple.first != null) {
+                return tuple.first;
+            }
+
+            if (tuple.second == Double.POSITIVE_INFINITY) {
+                return null;
+            }
+
+            costLimit = tuple.second;
+        }
+    }
+
+    public static class Tuple<T, D> {
+        public T first;
+        public D second;
+
+        Tuple(T first, D second) {
+            this.first = first;
+            this.second = second;
+        }
+    }
+
+    private static Tuple<LinkedList<Node>, Double> IDAStarImpl(
+            double startCost,
+            LinkedList<Node> path,
+            double costLimit,
+            Node target
+            )
+    {
+        Node node = path.getLast();
+        double minCost = startCost + node.getHeuristicEstimate(target);
+
+        if (minCost > costLimit) {
+            return new Tuple<LinkedList<Node>, Double>(null, minCost);
+        }
+
+        if (node.equals(target)) {
+            return new Tuple<LinkedList<Node>, Double>(path, costLimit);
+        }
+
+        double nextCostLimit = Double.POSITIVE_INFINITY;
+
+        for (Node child : node) {
+            double newStartCost = startCost + node.getCostTo(child);
+            path.addLast(child);
+            Tuple<LinkedList<Node>, Double> tuple =
+                    IDAStarImpl(newStartCost, path, costLimit, target);
+
+            if (tuple.first != null) {
+                // Solution found; launch the return.
+                return tuple;
+            }
+
+            path.removeLast();
+            nextCostLimit = Math.min(nextCostLimit, tuple.second);
+        }
+
+        return new Tuple<LinkedList<Node>, Double>(null, nextCostLimit);
+    }
+
+    public static LinkedList<Node> AStar(Node source, Node target) {
+        PriorityQueue<Node> OPEN = new PriorityQueue<Node>();
+        HashSet<Node> CLOSED = new HashSet<Node>();
+
+        HashMap<Node, Node> parentMap = new HashMap<Node, Node>();
+
+        source.g = 0.0;
+        source.h = source.getHeuristicEstimate(target);
+        OPEN.add(source);
+        parentMap.put(source, null);
+
+        while (OPEN.size() > 0) {
+            Node current = OPEN.remove();
+            CLOSED.add(current);
+
+            if (current.equals(target)) {
+                LinkedList<Node> path = new LinkedList<Node>();
+                current = target;
+
+                while (current != null) {
+                    path.addFirst(current);
+                    current = parentMap.get(current);
+                }
+
+                return path;
+            }
+
+            for (Node child : current) {
+                if (CLOSED.contains(child)) {
+                    continue;
+                }
+
+                double tmpg = current.g + current.getCostTo(child);
+                boolean doAdd;
+
+                if ((doAdd = !OPEN.contains(child)) || child.g > tmpg) {
+                    child.g = tmpg;
+                    parentMap.put(child, current);
+
+                    if (doAdd) {
+                        child.h = child.getHeuristicEstimate(target);
+                    } else {
+                        OPEN.remove(child);
+                    }
+
+                    OPEN.add(child);
+                }
+            }
+        }
+
+        // target unreachable from source, no path.
+        return null;
+    }
+
+    /**
+     * This class represents nodes of an explicit graph.
+     */
+    public static class Node implements Iterable<Node>, Comparable<Node> {
+        /**
+         * The g-value of this node. Used by A*.
+         */
+        protected double g;
+
+        /**
+         * The h-value of this node. Used by A*.
+         */
+        protected double h;
+
+        private HashMap<Node, Double> out;
+        private double[] coordinates;
+
+        public Node(double... coordinates) {
+            checkCoordinates(coordinates);
+            this.coordinates = coordinates;
+            out = new HashMap<Node, Double>();
+        }
+
+        public boolean equals(Object o) {
+            if (!(o instanceof Node)) {
+                return false;
+            }
+
+            Node node = (Node) o;
+
+            if (node.coordinates.length == this.coordinates.length) {
+                for (int i = 0; i < coordinates.length; i++) {
+                    if (node.coordinates[i] != coordinates[i]) {
+                        return false;
+                    }
+                }
+
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public int hashCode() {
+            double sum = 0.0;
+
+            for (double d : coordinates) {
+                sum += d * d;
+            }
+
+            return (int) sum;
+        }
+
+        public String toString() {
+            StringBuilder b = new StringBuilder();
+            b.append("[");
+
+            for (int i = 0; i < coordinates.length; i++) {
+                b.append(coordinates[i]);
+
+                if (i < coordinates.length - 1) {
+                    b.append(", ");
+                }
+            }
+
+            b.append("]");
+            return b.toString();
+        }
+
+        /**
+         * Returns the shortest path estimate from this to target. Implemented
+         * as the Euclidian metric between the two.
+         *
+         * @param target the target node.
+         *
+         * @return the Euclidian distance between this and target.
+         */
+        public double getHeuristicEstimate(Node target) {
+            double sum = 0.0;
+
+            // Fails in ArrayIndexOutOfBoundsException if coordinate vectors
+            // are not of the same length.
+            for (int i = 0;
+                 i < Math.max(coordinates.length, target.coordinates.length);
+                 i++) {
+                sum += Math.pow(coordinates[i] - target.coordinates[i], 2.0);
+            }
+
+            return Math.sqrt(sum);
+        }
+
+        public Double getCostTo(Node child) {
+            return out.get(child);
+        }
+
+        /**
+         * Compares the f-value of this node with the f-value of other.
+         *
+         * @param other the node to compare against.
+         *
+         * @return -1, 1 or 0 with usual semantics.
+         */
+        public int compareTo(Node other) {
+            if (g + h < other.g + other.h) {
+                return -1;
+            } else if (g + h > other.g + other.h) {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+
+        /**
+         * Creates a directed edge (this, child) with the specified weight.
+         *
+         * @param child the pointed node.
+         * @param weight the edge weight.
+         */
+        public void addChild(Node child, double weight) {
+            if (child == null
+                    || Double.isNaN(weight)
+                    || weight < getHeuristicEstimate(child)) {
+                return;
+            }
+
+            out.put(child, weight);
+        }
+
+        public Iterator<Node> iterator() {
+            return new ChildIterator();
+        }
+
+        // The iterator over the enclosing node's children.
+        private class ChildIterator implements Iterator<Node> {
+            private Iterator<Node> iterator;
+
+            ChildIterator() {
+                iterator = out.keySet().iterator();
+            }
+
+            public boolean hasNext() {
+                return iterator.hasNext();
+            }
+
+            public Node next() {
+                return iterator.next();
+            }
+
+            public void remove() {
+                throw new UnsupportedOperationException(
+                        "remove() not supported."
+                        );
+            }
+        }
+
+        // Throws if any coorinate is NaN.
+        private void checkCoordinates(double... coords) {
+            for (double d : coords) {
+                if (Double.isNaN(d)) {
+                    throw new IllegalArgumentException("NaN shall not pass!");
+                }
+            }
+        }
+    }
+
+    /**
+     * The entry point of the demo program.
+     *
+     * @param args the command line arguments.
+     */
+    public static void main(String[] args) {
+        final double SIDE_LEN = 40.0;
+
+        // Get a random graph in cube whose sides' length is SIDE_LEN.
+        ArrayList<Node> V = getRandomGraphInCube(800,
+                                                 515L,
+                                                 SIDE_LEN,
+                                                 SIDE_LEN / 2.0,
+                                                 0.5f);
+
+        // A couple of sentinels.
+        Node origo = new Node(new double[]{0, 0, 0});
+        Node end = new Node(new double[]{SIDE_LEN, SIDE_LEN, SIDE_LEN});
+
+        // All that we need to call A* and IDA*.
+        Node source = getClosestTo(origo, V);
+        Node target = getClosestTo(end, V);
+
+        System.out.println("Source: " + source);
+        System.out.println("Target: " + target + "\n");
+
+        long ta = System.currentTimeMillis();
+        LinkedList<Node> path = AStar(source, target);
+        long tb = System.currentTimeMillis();
+
+        double cost = 0.0;
+        Node prev = null;
+
+        for (Node node : path) {
+            if (prev != null) {
+                cost += prev.getCostTo(node);
+            }
+
+            System.out.println(node);
+            prev = node;
+        }
+
+        System.out.println("Time spent in A*: " + (tb - ta)
+                + " ms, path cost: " + cost + '\n');
+
+        ta = System.currentTimeMillis();
+        path = IDAStar(source, target);
+        tb = System.currentTimeMillis();
+
+        cost = 0.0;
+        prev = null;
+
+        for (Node node : path) {
+            if (prev != null) {
+                cost += prev.getCostTo(node);
+            }
+
+            System.out.println(node);
+            prev = node;
+        }
+
+        System.out.println("Time spent in IDA*: " + (tb - ta)
+                + " ms, path cost: " + cost + '\n');
+    }
+
+    static ArrayList<Node> getRandomGraphInCube(
+            int size,
+            long seed,
+            double length,
+            double maxDistance,
+            float loadFactor
+            )
+    {
+        ArrayList<Node> V = new ArrayList<Node>(size);
+        Random r = new Random(seed);
+
+        for (int i = 0; i < size; i++) {
+            V.add(new Node(new double[]{
+                length * r.nextDouble(),
+                length * r.nextDouble(),
+                length * r.nextDouble()
+            }));
+        }
+
+        for (int i = 0; i < size - 1; i++) {
+            for (int j = i + 1; j < size; j++) {
+                if (V.get(i).getHeuristicEstimate(V.get(j)) < maxDistance
+                        && r.nextFloat() < loadFactor) {
+                    V.get(i).addChild(
+                            V.get(j),
+                            (1.01 + r.nextDouble())
+                            * V.get(i).getHeuristicEstimate(V.get(j))
+                            );
+                }
+            }
+        }
+
+        return V;
+    }
+
+    static Node getClosestTo(Node n, ArrayList<Node> V) {
+        Node best = null;
+        double bestDistance = Double.POSITIVE_INFINITY;
+
+        for (Node node : V) {
+            if (bestDistance > node.getHeuristicEstimate(n)) {
+                bestDistance = node.getHeuristicEstimate(n);
+                best = node;
+            }
+        }
+
+        return best;
+    }
+}

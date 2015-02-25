@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#######################################################
+# Given the mureakuha user IDs xxxx, yyy, zzzz, the   #
+# ivocation of this script (./mkloader xxxx yyy zzzz) #
+# will download their code snippets, if available.    #
+#######################################################
+
+# Prints the usage info.
+function printUsage {
+    echo "Usage: $(basename $0) USER_ID1 USER_ID2 ..."
+}
+ 
+# Downloads all the code snippets of a given mureakuha user ID,
+# and stores them in the text files (residing in the current
+# directory) named after their respective code snippet IDs.
+function loadSnippetsByUser {
+    for cid in $(curl http://mureakuha.com/kayttajat/$1 |
+                 grep -o '\/koodikirjasto\/[0-9]\+' |
+                 grep -o '[0-9]\+'
+                ); do
+        curl http://mureakuha.com/dl.php?type=1\&id=$cid > $cid.txt    
+    done
+}
+
+# Check the command line.
+if [[ $# -lt "1" ]]; then
+    printUsage
+    exit 1
+fi
+
+# For each given user ID, download all the snippets.
+for uid in $@; do
+    loadSnippetsByUser $uid
+done

@@ -1,0 +1,782 @@
+/**
+ * Shows an ant colony system solving the well-known travelling salesman problem
+ * (TSP). Inspired by the article "Ant colonies for the travelling salesman
+ * problem" by Marco Dorigo and Luca Maria Gambardella.
+ */
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.NoSuchElementException;
+import java.util.Random;
+import java.util.Set;
+
+/**
+ * The entry point of this class compares 3 distinct methods for solving the TSP
+ * (travelling salesman problem):
+ * 
+ * o ACS (ant colony system) approximation,
+ * o Nearest neighbor heuristic approximation,
+ * o exact brute-force approach.
+ */
+public class Main {
+
+    /**
+     * Tries to solve a symmetric TSP instance specified by the
+     * <code>graph</code> and returns the shortest tour found.
+     * 
+     * @param <T> the type of satellite data held by the nodes.
+     * @param graph the graph to find the tour in.
+     * @param colonySize the amount of ants.
+     * @param alpha the evaporation rate.
+     * @param beta the trail/distance - bias.
+     * @param q_0 the maximization/distribution - bias.
+     * @param seed the seed for the PRNG.
+     * @param iterations the amount of tour iterations.
+     * 
+     * @return the shortest tour found.
+     */
+    public static <T> ArrayList<Node<T>> AntColonyOptimizeTSP(
+            final Node<T>[] graph,
+            final int colonySize,
+            final double alpha,
+            final double beta,
+            final double q_0,
+            final long seed,
+            final int iterations
+            )
+    {
+        // The 3 sanity checks follow.
+        if( colonySize < 1 )
+            throw new IllegalArgumentException( "'colonySize < 1'" );
+        
+        if( graph.length == 0 )
+            return new ArrayList<Node<T>>();
+        
+        if( graph.length == 1 )
+        {
+            ArrayList<Node<T>> tour = new ArrayList<Node<T>>();
+            tour.add( graph[0] );
+            return tour;
+        }
+        
+        ArrayList<Node<T>> best = null;
+        double bestMeasure = Double.MAX_VALUE;
+        Random r = new Random( seed );
+        double tau_0 = 1.0 / (
+                graph.length *
+                    getTourLength(
+                        NearestNeighborHeuristicTSP( graph, r.nextLong() )
+                        )
+                );
+        
+        Ant<?>[] colony = new Ant<?>[colonySize];
+        
+        // Create the ants.
+        for( int i = 0; i < colonySize; i++ )
+            colony[i] = new Ant<T>(
+                            graph,
+                            new Random( r.nextLong() ),
+                            alpha,
+                            beta,
+                            tau_0,
+                            q_0
+                            );
+        
+        // Initialize the pheromone trails.
+        for( Node<T> node : graph )
+            for( Node<T> node2 : node.getNeighbors() )
+                node.setPheromoneTrail( node2, tau_0 / 4.0 );
+        
+        for( int i = 0; i < iterations; i++ )
+        {   
+            boolean notDone = false;
+
+            // Move the ants along their individual tours.
+            do for( Ant<?> ant : colony )
+                    notDone = ant.proceed();
+            while( notDone );
+            
+            if( best == null )
+            {
+                best = ((Ant<T>) colony[0]).getTour();
+                bestMeasure = getTourLength( best );
+            }
+            
+            ArrayList<Node<T>> tmp;
+            double tmpMeasure;
+            
+            // Fetch the best tour, if any found in previous iteration.
+            for( Ant<?> ant : colony )
+                if(
+                    (tmpMeasure = getTourLength(
+                        tmp = ((Ant<T>) ant).getTour()
+                        )
+                    )
+                    < bestMeasure
+                )
+                {
+                    bestMeasure = tmpMeasure;
+                    best = tmp;
+                }
+            
+            if( i < iterations - 1 )
+            {
+                for( Ant<?> ant : colony )
+                    ant.reset();
+                
+                Node<T> first = best.get( 0 );
+                
+                // Updating the pheromone trail of a best tour in
+                // the previous iteration.
+                for( int j = 0; j < graph.length - 1; j++ )
+                {
+                    Node<T> second = best.get( j + 1 );
+                    double trail = first.getPheromoneTrail(
+                                                    second
+                                                    );
+                    
+                    first.setPheromoneTrail(
+                                    second,
+                                    trail + alpha * (tau_0 - trail)
+                                    );
+                    
+                    first = second;
+                }
+                
+                // The concluding edge update.
+                Node<T> other = best.get( 0 );
+                double trail = first.getPheromoneTrail( other );
+                
+                first.setPheromoneTrail(
+                        other,
+                        trail + alpha * (tau_0 - trail)
+                        );
+            }
+        }
+        
+        return best;
+    }
+    
+    /**
+     * This class models an ant agent traversing the graph and leaving pheromone
+     * trails as to make other ants prefer the traversed edge more or less.
+     * 
+     * @param <T> the type of satellite data held by a graph node.
+     */
+    public static class Ant<T> {
+        private final Node<T>[] graph;
+        private final Random random;
+        private final HashSet<Node<T>> memory;
+        private final HashSet<Node<T>> left;
+        private final ArrayList<Node<T>> tour;
+        private final double alpha;
+        private final double beta;
+        private final double tau_0;
+        private final double q_0;
+        private Node<T> current;
+        
+        /**
+         * Constructs a new ant agent.
+         * 
+         * @param graph the graph to traverse.
+         * @param random a PRNG.
+         * @param alpha trail evaporation rate.
+         * @param beta the trail/distance - bias.
+         * @param tau_0 the stable pheromone amount.
+         * @param q_0 the maximization/distribution - bias.
+         */
+        public Ant(
+                final Node<T>[] graph,
+                final Random random,
+                final double alpha,
+                final double beta,
+                final double tau_0,
+                final double q_0
+                )
+        {
+            if(
+                Double.isNaN( alpha ) || Double.isInfinite( alpha ) ||
+                alpha <= 0.0 || alpha >= 1.0
+            )
+                throw new IllegalArgumentException( "Bad alpha: " + alpha );
+            
+            if(
+                Double.isNaN( beta ) || Double.isInfinite( beta ) ||
+                beta <= 0.0
+            )
+                throw new IllegalArgumentException( "Bad beta: " + beta );
+            
+            if(
+                Double.isNaN( tau_0 ) || Double.isInfinite( tau_0 ) ||
+                tau_0 <= 0.0
+            )
+                throw new IllegalArgumentException( "Bad tau_0: " + beta );
+            
+            if(
+                Double.isNaN( q_0 ) || Double.isInfinite( q_0 ) ||
+                q_0 <= 0.0 || q_0 >= 1.0
+            )
+                throw new IllegalArgumentException( "Bad q_0: " + q_0 );
+            
+            this.alpha = alpha;
+            this.beta = beta;
+            this.tau_0 = tau_0;
+            this.q_0 = q_0;
+            this.graph = graph;
+            this.random = random;
+            this.memory = new HashSet<Node<T>>( graph.length, 1.05f );
+            this.left = new HashSet<Node<T>>( graph.length, 1.05f );
+            this.tour = new ArrayList<Node<T>>( graph.length );
+        }
+        
+        /**
+         * Makes this <code>Ant</code> to make the next move.
+         * 
+         * @return <code>false</code> if this <code>Ant</code> has visited all
+         * nodes prior to making a new move; <code>true</code> otherwise.
+         */
+        public boolean proceed(){
+            if( memory.size() == graph.length - 1 )
+            {
+                tour.add( current );
+                return false;
+            }
+            
+            if( current == null )
+            {
+                current = graph[random.nextInt( graph.length )];
+                tour.clear();
+                left.clear();
+                
+                for( Node<T> node : graph )
+                    if( node != current )
+                        left.add( node );
+                
+                return true;
+            }
+            
+            Node<T> next = null;
+            
+            if( random.nextDouble() <= this.q_0 || memory.isEmpty() )
+            {
+                double objective = -1000.0;
+                
+                for( Node<T> node : left )
+                {
+                    double currentObjective =
+                            current.getPheromoneTrail( node ) *
+                            Math.pow( 1.0 / current.getWeight( node ), beta );
+                    
+                    if( objective < currentObjective )
+                    {
+                        objective = currentObjective;
+                        next = node;
+                    }
+                }
+            }
+            else
+            {
+                ProbabilityDistribution<Node<T>> distribution =
+                        new ProbabilityDistribution<Node<T>>(
+                            random.nextLong(),
+                            left.size()
+                            );
+                
+                for( Node<T> node : left )
+                {
+                    double sum = 0.0;
+                    
+                    for( Node<T> visited : memory )
+                        sum += current.getPheromoneTrail( visited ) *
+                                   Math.pow(
+                                       1.0 / current.getWeight( visited ),
+                                       beta
+                                       );
+                        
+                    
+                    distribution.add(
+                            node,
+                            current.getPheromoneTrail( node ) *
+                                Math.pow(
+                                    1.0 / current.getWeight( node ),
+                                    beta
+                                    ) /
+                                sum
+                            );
+                }
+                
+                next = distribution.choose();
+            }
+
+            left.remove( next );
+            double currentTrail = current.getPheromoneTrail( next );
+
+            current.setPheromoneTrail(
+                    next,
+                    currentTrail + alpha * (tau_0 - currentTrail)
+                    );
+
+            memory.add( current );
+            tour.add( current );
+            current = next;
+            return true;
+        }
+        
+        /**
+         * Prepares this <code>Ant</code> to start a new tour.
+         */
+        public void reset(){
+            current = null;
+            memory.clear();
+            tour.clear();
+        }
+        
+        /**
+         * Retrieves a traversed tour, if available.
+         * 
+         * @return the traversed tour.
+         * @throws IllegalStateException if tour is not complete.
+         */
+        public ArrayList<Node<T>> getTour(){
+            if( memory.size() < graph.length - 1 )
+                throw new IllegalStateException( "A tour is not complete." );
+            
+            return new ArrayList<Node<T>>( tour );
+        }
+    }
+    
+    /**
+     * This class models a graph node.
+     * 
+     * @param <T> the type of satellite data held by this <code>Node</code>.
+     */
+    public static class Node<T>{
+        private T datum;
+        private HashMap<Node<T>, Double> adj;
+        private HashMap<Node<T>, Double> pheromone;
+        
+        public Node( T datum ){
+            this.datum = datum;
+            adj = new HashMap<Node<T>, Double>();
+            pheromone = new HashMap<Node<T>, Double>();
+        }
+        
+        public boolean addEdge( Node<T> other, double weight ){
+            if(
+                other == null || other == this ||
+                Double.isNaN( weight ) || Double.isInfinite( weight ) ||
+                weight < 0.0
+            )
+                return false;
+        
+            this.adj.put( other, weight );
+            other.adj.put( this, weight );
+            
+            this.pheromone.put( other, 0.0 );
+            other.pheromone.put( this, 0.0 );
+            
+            return true;
+        }
+        
+        public Set<Node<T>> getNeighbors(){
+            return adj.keySet();
+        }
+        
+        public double getWeight( Node<T> adjacent ){
+            return adj.get( adjacent );
+        }
+        
+        public double getPheromoneTrail( Node<T> adjacent ){
+            return pheromone.get( adjacent );
+        }
+        
+        public void setPheromoneTrail( Node<T> adjacent, double trail ){
+            pheromone.put( adjacent, trail );
+        }
+        
+        public String toString(){
+            return "[ Node: " + datum.toString() + " ]";
+        }
+    }
+    
+    public static class ProbabilityDistribution<T> {
+        private final ArrayList<T>      items;
+        private final ArrayList<Double> probabilities;
+        private final Random            random;
+        private double                  total;
+        
+        public ProbabilityDistribution( long seed, int commitCount ){
+            this.items         = new ArrayList<T>( commitCount );
+            this.probabilities = new ArrayList<Double>( commitCount );
+            this.random        = new Random( seed );
+        }
+        
+        public void add( T element, double probability ){
+            if(
+                probability == Double.NaN ||
+                Double.isInfinite( probability ) ||
+                probability < 0.0
+            )
+                throw new IllegalArgumentException(
+                        "Bad probability: " + probability
+                        );
+            
+            items.add( element );
+            probabilities.add( probability );
+            total += probability;
+        }
+        
+        public T choose(){
+            double r = random.nextDouble();
+            r *= total;
+            final int size = items.size();
+            
+            double sum = 0.0;
+            
+            for( int i = 0; i < size; i++ )
+            {
+                sum += probabilities.get( i );
+                
+                if( sum >= r )
+                    return items.get( i );
+            }
+            
+            return items.get( size - 1 );
+        }
+    }
+    
+    public static void main(String[] args) {
+        int N = 10;
+        
+        if( args.length > 0 )
+            N = Integer.parseInt( args[0] );
+        
+        if( N < 5 )
+            N = 5;
+        
+        System.out.println( "Node amount: " + N + ".\n" );
+        
+        // Create a complete graph with randomly chosen, positive weights on
+        // the edges.
+        Node<String>[] graph = generateRandomCompleteGraph(
+                N,
+                202L,
+                5e4
+                );
+        
+        
+        //// DEMO FOR THE ANT COLONY SYSTEM ////
+        System.out.println( "--- ACS ---" );
+        
+        long ta = System.currentTimeMillis();
+        
+        ArrayList<Node<String>> tour = 
+                AntColonyOptimizeTSP(
+                    graph,          // The graph.
+                    (N * 3) / 4,    // Ant amount.
+                    0.1,            // Evaporation rate.
+                    2.0,            // Trail/distance - bias.
+                    0.9,            // Maximize/distribution - bias.
+                    414L,           // Seed for PRNG.
+                    N / 2           // Tour iterations.
+                    );
+        
+        long tb = System.currentTimeMillis();
+        
+        System.out.println( "Best tour found:" );
+        
+        for( Node<String> node : tour )
+            System.out.println( node );
+        
+        System.out.println( "Tour length: " + getTourLength( tour ) );
+        System.out.println( "Time: " + (tb - ta) + " ms." );
+        
+        //// DEMO FOR THE NEAREST NEIGHBOR HEURISTIC ////
+        System.out.println( "\n--- Nearest neighbor heuristic ---" );
+        
+        ta = System.currentTimeMillis();
+        
+        tour = NearestNeighborHeuristicTSP( graph, 313L );
+        
+        tb = System.currentTimeMillis();
+        
+        System.out.println( "Best tour found:" );
+        
+        for( Node<String> node : tour )
+            System.out.println( node );
+        
+        System.out.println( "Tour length: " + getTourLength( tour ) );
+        System.out.println( "Time: " + (tb - ta) + " ms." );
+        
+        //// DEMO FOR THE BRUTE FORCE APPROACH ////
+        System.out.println( "\n--- Brute force ---" );
+        
+        ta = System.currentTimeMillis();
+        
+        tour = BruteForceTSP( graph );
+        
+        tb = System.currentTimeMillis();
+        
+        System.out.println( "Best tour found:" );
+        
+        for( Node<String> node : tour )
+            System.out.println( node );
+        
+        System.out.println( "Tour length: " + getTourLength( tour ) );
+        System.out.println( "Time: " + (tb - ta) + " ms." );
+    }
+    
+    /**
+     * Solves a TSP using an exact, brute force approach.
+     * 
+     * @param <T> the type of satellite data held by the nodes.
+     * @param graph the input graph.
+     * 
+     * @return the shortest length tour over all the nodes of the
+     * <code>graph</code>.
+     */
+    public static <T> ArrayList<Node<T>> BruteForceTSP( Node<T>[] graph ){
+        final int N = graph.length;
+        ArrayList<Node<T>> bestTour = new ArrayList<Node<T>>( N );
+        
+        for( Node<T> node : graph )
+            bestTour.add( node );
+        
+        double bestLengthSoFar = getTourLength( bestTour );
+        
+        double tmpLength;
+        ArrayList<Node<T>> tmpTour = new ArrayList<Node<T>>( N );
+        PermutationIterator iterator = new PermutationIterator( N );
+        
+        while( iterator.hasNext() )
+        {
+            int[] permutation = iterator.next();
+            tmpTour.clear();
+            
+            for( int i : permutation )
+                tmpTour.add( graph[i] );
+            
+            if( (tmpLength = getTourLength( tmpTour )) < bestLengthSoFar )
+            {
+                bestLengthSoFar = tmpLength;
+                bestTour.clear();
+                
+                for( Node<T> node : tmpTour )
+                    bestTour.add( node );
+            }
+        }
+        
+        return bestTour;
+    }
+    
+    /**
+     * A simple heuristic solving a symmetric TSP. It is proven that for any
+     * size of the problem, the nearest neighbor heuristic may end up returning
+     * a tour with the largest length.
+     * 
+     * It is pretty fast, though.
+     * 
+     * @param <T> the type of satellite data held by the nodes.
+     * @param graph the problem graph.
+     * @param seed the seed for the PRNG.
+     * 
+     * @return a tour as required in the TSP.
+     */
+    public static <T> ArrayList<Node<T>> NearestNeighborHeuristicTSP(
+            Node<T>[] graph,
+            long seed
+            )
+    {
+        Random random = new Random( seed );
+        ArrayList<Node<T>> tour = new ArrayList<Node<T>>( graph.length );
+        HashSet<Node<T>> visitedSet =
+                new HashSet<Node<T>>( graph.length, 1.05f );
+        Node<T> current = graph[random.nextInt( graph.length )];
+        tour.add( current );
+        visitedSet.add( current );
+        
+        final int N = graph.length - 1;
+        
+        for( int i = 0; i < N; i++ )
+        {
+            double shortestLength = 0.0;
+            Node<T> nearest = null;
+            
+            for( Node<T> neighbor : current.getNeighbors() )
+                if( !visitedSet.contains( neighbor ) )
+                {
+                    if( nearest == null )
+                    {
+                        shortestLength = current.getWeight( neighbor );
+                        nearest = neighbor;
+                    }
+                    else
+                    {
+                        double tmp = current.getWeight( neighbor );
+                        
+                        if( tmp < shortestLength )
+                        {
+                            shortestLength = tmp;
+                            nearest = neighbor;
+                        }
+                    }
+                }
+            
+            tour.add( nearest );
+            visitedSet.add( nearest );
+            current = nearest;
+        }
+        
+        return tour;
+    }
+    
+    /**
+     * Computes the length of a tour.
+     * 
+     * @param <T> the type of the satellite data held by the nodes.
+     * @param tour the tour whose length is to be computed.
+     * 
+     * @return the length of the argument tour.
+     */
+    public static <T> double getTourLength( ArrayList<Node<T>> tour ){
+        double cost = 0.0;
+        Node<T> first = tour.get( 0 );
+        Node<T> second = null;
+        
+        for( int i = 0; i < tour.size() - 1; i++ )
+        {
+            second = tour.get( i + 1 );
+            cost += first.getWeight( second );
+            first = second;
+        }
+        
+        if( tour.size() > 1 )
+            cost += tour.get( tour.size() - 1 ).getWeight( tour.get( 0 ) );
+        
+        return cost;
+    }
+    
+    /**
+     * This class generates the integer permutations over a particular
+     * <code>n</code>.
+     */
+    public static class PermutationIterator {
+        private int[] array;
+        private int n;
+        
+        public PermutationIterator( final int n ){
+            this.n = n;
+        }
+        
+        public boolean hasNext(){
+            if( n <= 0 )
+                return false;
+            
+            if( array == null )
+                return true;
+            
+            return !isLast();
+        }
+        
+        // Operation order: generate a new permutation and return it.
+        public int[] next(){
+            if( array == null )
+            {
+                // The first iteration.
+                array = new int[n];
+                int[] value = new int[n];
+                
+                for( int i = 0; i < n; i++ )
+                    array[i] = value[i] = i;
+                
+                return value;
+            }
+            
+            int i = n - 1;
+            
+            for(; i > 0; i-- )
+                if( array[i - 1] < array[i] )
+                    break;
+            
+            if( i <= 0 )
+                // All permutations iterated.
+                throw new NoSuchElementException();
+            
+            int j = n;
+            
+            // Find the first (from right to left) integer greater than
+            // 'array[i - 1]'.
+            for(; array[j - 1] < array[i - 1]; j-- );
+                
+            // Exchange the two.
+            int tmp = array[j - 1];
+            array[j - 1] = array[i - 1];
+            array[i - 1] = tmp;
+            
+            // Put the subarray 'array[i .. (n - 1)]' into ascending order.
+            for( j = n - 1; i < j; i++, j-- )
+            {
+                tmp = array[i];
+                array[i] = array[j];
+                array[j] = tmp;
+            }
+            
+            // Return.
+            return array.clone();
+        }
+        
+        private boolean isLast(){
+            for( int i = 0; i < array.length - 1; i++ )
+                if( array[i] < array[i + 1] )
+                    return false;
+            
+            // If 'array' is descending, we cannot iterate any more.
+            return true;
+        }
+    }
+    
+    /**
+     * Generates a complete graph with <code>nodeAmount</code> nodes.
+     * 
+     * @param nodeAmount the amount of nodes.
+     * @param seed the seed number for the PRNG.
+     * @param bound the maximum edge weight (approximately).
+     */
+    public static Node<String>[] generateRandomCompleteGraph(
+            final int nodeAmount,
+            final long seed,
+            final double bound
+            )
+    {
+        if( nodeAmount < 0 )
+            throw new IllegalArgumentException( "'nodeAmount < 0'" );
+        
+        if(
+            Double.isNaN( bound ) ||
+            Double.isInfinite( bound ) ||
+            bound <= 0.0
+        )
+            throw new IllegalArgumentException( "Illegal bound: " + bound );
+        
+        // Cannot create a generic array; that's why using "?" - wildcard.
+        Node<?>[] G = new Node<?>[nodeAmount];
+        char nodeName = 'A';
+        
+        // Create the nodes (cities).
+        for( int i = 0; i < nodeAmount; i++ )
+            G[i] = new Node<String>( "" + nodeName++ );
+        
+        Random random = new Random( seed );
+        
+        // Create the edges.
+        for( int i = 0; i < nodeAmount - 1; i++ )
+            for( int j = i + 1; j < nodeAmount; j++ )
+                ((Node<String>) G[i]).addEdge(
+                        (Node<String>) G[j],
+                        (random.nextDouble() + 0.001) * bound
+                        );
+        
+        return (Node<String>[]) G;
+    }
+}

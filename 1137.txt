@@ -1,0 +1,213 @@
+// Kehitys-JDK: 1.6.0 update 11
+
+import java.awt.*;
+import java.awt.geom.*;
+import javax.swing.*;
+import javax.swing.border.Border;
+import javax.swing.plaf.ProgressBarUI;
+
+
+/* DProgressBar (DoubleProgressBar)
+ *
+ * Hieman modattu JProgressBar: rendaa 'edistyspalkin'
+ * kaksiosaisena. Toimii vaaka-/pystysuorassa.
+ * Muilta osin peritty API on koskemattomana.
+ */
+
+public class DProgressBar extends JProgressBar {
+
+    static final private int defaultMin = 0;
+    static final private int defaultMax = 100;
+    // komponenttikoon minimit
+    static final private int minWidth = 36;
+    static final private int minHeight = 20;
+    private Font font;
+
+    public DProgressBar() {
+        this(defaultMin, defaultMax);
+    }
+
+    public DProgressBar(int min, int max) {
+        super();
+        init(min, max);
+
+        // laitetaan kuormitettu UI
+        this.setUI(new ProgressBarUI() {
+
+            public void paint(Graphics g, JComponent jc) {
+
+                // akronyymi lakonisuuden nimess‰
+                DProgressBar bar = DProgressBar.this;
+
+                Dimension size = bar.getSize(null);
+
+                // vaakasuora?
+                boolean bHorz = bar.getOrientation() == bar.HORIZONTAL;
+
+                Color bgColor = jc.getBackground();
+                Color barColor = jc.getForeground();
+
+                // osapalkin pituus, EI siis molempien summa
+                int barLength = (int)(0.5 * (bHorz ? size.width : size.height)
+                        * bar.getPercentComplete());
+
+                // pyyhit‰‰n
+                g.setColor(bgColor);
+                g.fillRect(0, 0, size.width - 1, size.height - 1);
+
+                // rendataan molemmat osapalkit
+                g.setColor(barColor);
+                // vasen : ylimm‰inen
+                g.fillRect(
+                        0,
+                        0,
+                        (bHorz ? barLength : size.width),
+                        (bHorz ? size.height : barLength));
+
+                // oikea : alimmainen
+                g.fillRect(
+                        (bHorz ? size.width - barLength : 0),
+                        (bHorz ? 0 : size.height - barLength),
+                        size.width,
+                        size.height);
+
+                // jos komponentin leveys : korkeus on pariton &&
+                // ja maksimiarvo on asetettu ( setValue(40) ),
+                // keskelle j‰‰ pikselin paksu jana piirt‰m‰tt‰,
+                // se korjataan manuaalisesti
+                if (2 * barLength + 1 == (bHorz ? size.width : size.height)) {
+                    g.setColor(barColor);
+                    if (bHorz)
+                        g.drawLine(barLength, 0, barLength, size.height);
+                    else
+                        g.drawLine(0, barLength, size.width, barLength);
+                }
+
+                Border border = bar.getBorder();
+                if (bar.paintBorder && border != null) {
+                    border.paintBorder(bar, g, 0, 0, size.width, size.height);
+                }
+
+                // prosenttiluvun piirtoa
+                // huom! mielivaltaisten merkkijonojen piirto ei tuettu
+                if (bar.paintString) {
+                    g.setColor(bgColor);
+                    g.setFont(bar.font);
+
+                    String paintStr = (int)(100*bar.getPercentComplete()) + "%";
+                    Rectangle2D rect = g.getFontMetrics().getStringBounds(
+                            paintStr,
+                            g);
+
+                    // nykyfontin esim. 'O', 'D' tai '1' merkkien korkeus
+                    float ascent = g.getFontMetrics()
+                            .getLineMetrics(paintStr, g).getAscent();
+
+                    // barColor - v‰riset pikselit bgColor - v‰risiksi
+                    // ja k‰‰nt‰en
+                    g.setXORMode(barColor);
+                    g.drawString(
+                            paintStr,
+                            (int) (0.5 * (size.width - rect.getWidth())), //
+                            (int) (0.5 * (size.height + ascent))
+                    );
+
+                }
+            }
+        }); // end: this.setUI( new ProgressBarUI(){ ...
+    }
+
+    public void setValue(int n) {
+        super.setValue(n);
+        this.repaint();
+    }
+
+    // lis‰alustuksia
+    private void init(int min, int max) {
+        font = new Font(Font.SANS_SERIF, Font.BOLD, 12);
+
+        int width = Math.max(2 * (max - min), minWidth);
+        this.setMinimumSize(new Dimension(minWidth, minHeight));
+        this.setPreferredSize(new Dimension(width, minHeight));
+
+        this.setForeground(Color.CYAN);
+        this.setBackground(Color.BLACK);
+        this.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2));
+
+        this.setMinimum(min);
+        this.setMaximum(max);
+    }
+
+    // demo
+    public static void main(String... args) {
+        Dimension size = new Dimension(201, 30);
+        JProgressBar jH = new JProgressBar(0, 40);
+        JProgressBar jV = new JProgressBar(0, 40);
+        DProgressBar dH = new DProgressBar(0, 40);
+        DProgressBar dV = new DProgressBar(0, 40);
+
+        jH.setPreferredSize(size);
+        dH.setPreferredSize(size);
+
+        jH.setStringPainted(true);
+        dH.setStringPainted(true);
+
+        dH.setForeground(Color.DARK_GRAY);
+        dH.setBackground(Color.PINK);
+        dH.setBorderPainted(true);
+        dH.setBorder(BorderFactory.createLineBorder(Color.RED, 2));
+
+        // vaihdetaan arvot kesken‰‰n (haetaan pystysuora DPBar & JPBar)
+        size = new Dimension(size.height, size.width);
+
+        jV.setPreferredSize(size);
+        dV.setPreferredSize(size);
+
+        jV.setOrientation(JProgressBar.VERTICAL);
+        dV.setOrientation(DProgressBar.VERTICAL);
+
+        jV.setStringPainted(true);
+        dV.setStringPainted(true);
+
+        //dV.setBorderPainted(false);
+
+        JFrame frameH = new JFrame("DProgressBar: coderodde, -09");
+        JFrame frameV = new JFrame();
+
+        frameH.setLayout(new GridBagLayout());
+        frameH.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frameV.setLayout(new GridBagLayout());
+        frameV.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        frameH.add(dH);
+        frameH.add(jH);
+        frameH.pack();
+
+        frameV.add(dV);
+        frameV.add(jV);
+        frameV.pack();
+
+        Dimension f = frameH.getSize();
+        Dimension s = Toolkit.getDefaultToolkit().getScreenSize();
+
+        frameH.setLocation((s.width - f.width) / 2, (s.height - f.height) / 2);
+        frameH.setVisible(true);
+        frameV.setVisible(true);
+
+        int ave = (dH.getMaximum() + dH.getMinimum()) / 2;
+
+        for (int i = 0; i < 1000; i++) {
+            try {
+                Thread.sleep(25);
+            } catch (Exception e) {}
+
+            int val = (int) (ave + (ave + 2) * Math.sin(Math.PI * i / 90));
+            dH.setValue(val);
+            jH.setValue(val);
+            dV.setValue(val);
+            jV.setValue(val);
+        }
+
+        System.out.println("Demoing done.");
+    }
+}

@@ -1,0 +1,174 @@
+import java.util.Random;
+import java.util.Arrays;
+
+public class Main {
+
+    public static <T extends Comparable<T>> void The3WayMergesort( T[] V ){
+        // luo apulista lomittamisia varten
+        T[] aux = (T[]) V.clone();
+        The3WayMergesort( aux, V, 0, V.length );
+    }
+
+    // Alkuluvut 5, 7, 13, jne, näytävät tuotavan toisinaan
+    // Arrays.sort:ia nopeamman tuloksen
+    private final static int INSERTIONSORT_THRESHOLD = 5;
+    
+    private static <T extends Comparable<T>> void The3WayMergesort(
+            T[] source,
+            T[] dest,
+            int index,
+            int length )
+    {
+        // osalista liian pieni, sovelletaan Insertionsort:ia sille
+        if( length < INSERTIONSORT_THRESHOLD )
+        {
+            final int jEnd = index + length;
+
+            for( int j = index + 1; j < jEnd; j++ )
+                for(
+                    int i = j;
+                    i > index && dest[i - 1].compareTo( dest[i] ) > 0;
+                    i--
+                )
+                {
+                    T t = dest[i];
+                    dest[i] = dest[i - 1];
+                    dest[i - 1] = t;
+                }
+            
+            return;
+        }
+
+        int midLeftLength = length / 3;
+        int rightLength = length - 2 * midLeftLength;
+
+        int i = index;
+        int il = index;
+        int im = index + midLeftLength;
+        int ir = index + 2 * midLeftLength;
+        int nl = midLeftLength;
+        int nm = midLeftLength;
+        int nr = rightLength;
+
+        // lajitellaan rekursiivisesti kolmea osalistaa
+        The3WayMergesort( dest, source, il, nl );
+        The3WayMergesort( dest, source, im, nm );
+        The3WayMergesort( dest, source, ir, nr );
+
+        // nyt lomitetaan kaikki kolme
+        for(; nl > 0 && nm > 0 && nr > 0; i++ )
+            if( source[il].compareTo( source[im] ) <= 0 )
+            {
+                if( source[il].compareTo( source[ir] ) <= 0 )
+                {
+                    dest[i] = source[il++];
+                    nl--;
+                }
+                else
+                {
+                    dest[i] = source[ir++];
+                    nr--;
+                }
+            }
+            else
+            {
+                if( source[im].compareTo( source[ir] ) <= 0 )
+                {
+                    dest[i] = source[im++];
+                    nm--;
+                }
+                else
+                {
+                    dest[i] = source[ir++];
+                    nr--;
+                }
+            }
+
+        // yksi järjestetty osalista on käyty läpi, nyt lomitetaan
+        // kaksi jäljelle jäävää. Huom. vain yksi seuraavista kolmesta
+        // for - silmukasta iteroidaan
+        for(; nl > 0 && nm > 0; i++ )
+            if( source[il].compareTo( source[im] ) <= 0 )
+            {
+                dest[i] = source[il++];
+                nl--;
+            }
+            else
+            {
+                dest[i] = source[im++];
+                nm--;
+            }
+
+        for(; nl > 0 && nr > 0; i++ )
+            if( source[il].compareTo( source[ir] ) <= 0 )
+            {
+                dest[i] = source[il++];
+                nl--;
+            }
+            else
+            {
+                dest[i] = source[ir++];
+                nr--;
+            }
+
+        for(; nm > 0 && nr > 0; i++ )
+            if( source[im].compareTo( source[ir] ) <= 0 )
+            {
+                dest[i] = source[im++];
+                nm--;
+            }
+            else
+            {
+                dest[i] = source[ir++];
+                nr--;
+            }
+
+        // kaksi järjest. osalistaa on lomitettu, lisää kolmas tulokseen
+        for(; nl > 0; i++, nl--, il++ ) dest[i] = source[il];
+        for(; nm > 0; i++, nm--, im++ ) dest[i] = source[im];
+        for(; nr > 0; i++, nr--, ir++ ) dest[i] = source[ir];
+    }
+
+    public static void main(String[] args) {
+        int length = 1000000;
+        Integer[] list1 = getRandomList( length );
+        Integer[] list2 = (Integer[]) list1.clone();
+
+        long ta, tb;
+
+        ta = System.currentTimeMillis();
+        Arrays.sort( list1 );
+        tb = System.currentTimeMillis();
+
+        System.out.println( "Arrays.sort() took " + (tb - ta) + " ms." );
+
+        ta = System.currentTimeMillis();
+        The3WayMergesort( list2 );
+        tb = System.currentTimeMillis();
+
+        System.out.println( "The3WayMergesort() took " + (tb - ta) + " ms." );
+
+        System.out.println( "Arrays are equal: " + equals( list1, list2 ) );
+    }
+
+    private static Integer[] getRandomList( int length ){
+        Integer[] list = new Integer[ length ];
+        Random r = new Random();
+
+        for( int i = 0; i < length; i++ )
+            list[i] = r.nextInt( length );
+
+        return list;
+    }
+
+    private static <T> boolean equals( T[] l1, T[] l2 ){
+        if( l1.length != l2.length )
+            return false;
+
+        for( int i = 0; i < l1.length; i++ )
+            if( !l1[i].equals( l2[i] ) )
+                return false;
+
+        return true;
+    }
+}

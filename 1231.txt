@@ -1,0 +1,1087 @@
+/*****************************
+* Files in the code snippet: *
+*                            *
+* 1) ShortestPathSolver.java *
+* 2) MinPriorityQueue.java   *
+* 3) MinPriorityQueueEx.java *
+* 4) Node.java               *
+* 5) Weight.java             *
+* 6) Main.java               *
+*****************************/
+
+////  /////////////////////////
+ // ShortestPathSolver.java //
+/////////////////////////  ////
+
+package com.mureakuha.util;
+
+import java.util.Stack;
+
+/**
+ * This class comprises the minimal library to operate on shortest paths of a
+ * graph.
+ */
+public class ShortestPathSolver {
+
+    /**
+     * Computes the shortest path tree in the input graph using a particular
+     * source node.
+     *
+     * @param <T> the type of nodes' satellite data
+     * @param <E> the type of edges' satellite data
+     * @param graph the graph for which to compute the shortest path tree
+     * @param source the source node
+     * @param fast  whether to use a heap with O(log |V|) operations
+     */
+    public static <T, E> void DijkstrasAlgorithm(
+            Node<T, E>[] graph,
+            Node<T, E> source,
+            boolean fast
+            )
+    {
+        MinPriorityQueue<Node<T, E>> Q = InitializeSingleSource(
+                graph,
+                source,
+                fast
+                );
+
+        while( Q.size() > 0 )
+        {
+            Node<T, E> u = Q.extractMinimum();
+
+            // If u.distance equals Double.POSITIVE_INFINITY, we know that the
+            // heap Q contains only the nodes unreachable from the given source.
+            if( u.distance == Double.POSITIVE_INFINITY )
+                return;
+
+            // Iterate through the adjacent nodes, which may be accessed from u.
+            for( Object neighbor : u.getOutgoingNeighbors() )
+            {
+                Node<T, E> v = (Node<T, E>) neighbor;
+                double estimate = u.distance + u.getEdge( v ).getWeight();
+
+                if( v.distance > estimate )
+                {
+                    v.distance = estimate;
+                    v.parent = u;
+                    Q.decreasePriority( v, estimate );
+                }
+            }
+        }
+    }
+
+    /**
+     * Constructs and returns the priority queue for execution under Dijkstra's
+     * algorithm.
+     * 
+     * @param <T> the type of nodes' satellite data
+     * @param <E> the type of edges' satellite data
+     * @param graph the graph in which compute the shortest paths
+     * @param source the source node
+     * @param fast whether to use a heap with O(log |V|) operations
+     * @return
+     */
+    static <T, E> MinPriorityQueue<Node<T, E>> InitializeSingleSource(
+            Node<T, E>[] graph,
+            Node<T, E> source,
+            boolean fast
+            )
+    {
+        if( source == null )
+            throw new IllegalArgumentException( "Source node is null." );
+
+        MinPriorityQueue<Node<T, E>> Q =
+                fast ?
+                    new MinPriorityQueueEx<Node<T, E>>( graph.length ) :
+                    new MinPriorityQueue<Node<T, E>>( graph.length );
+
+        // Initialize the source node.
+        Q.insert( source, 0.0 );
+        source.parent = null;
+        source.distance = 0.0;
+
+        // Initialize any other node.
+        for( Node<T, E> node : graph )
+            if( node != null && node != source )
+            {
+                Q.insert( node, Double.POSITIVE_INFINITY );
+                node.distance = Double.POSITIVE_INFINITY;
+                node.parent = null;
+            }
+
+        return Q;
+    }
+
+    /**
+     * Constructs and returns the shortest path from the source node to the
+     * destination node using the precomputed shortest path tree.
+     * 
+     * @param <T> the type of nodes' satellite data
+     * @param <E> the type of edges' satellite data
+     * @param destination the destination node
+     * @return the path from the source node to the destination node
+     */
+    public static <T, E> Stack<Node<T, E>> GetPathTo(
+            Node<T, E> destination
+            )
+    {
+        // Unreachable destination?
+        if( destination.parent == null )
+            return null;
+
+        Stack<Node<T, E>> path = new Stack<Node<T, E>>();
+
+        // Load the path until the source node is added to it.
+        do {
+            path.push( destination );
+            destination = destination.parent;
+        }
+        while( destination != null );
+
+        return path;
+    }
+}
+
+////  ///////////////////////
+ // MinPriorityQueue.java //
+///////////////////////  ////
+
+package com.mureakuha.util;
+
+import java.util.NoSuchElementException;
+
+/**
+ * This class models a minimum priority queue by means of a minimum binary heap.
+ * The 3 most important operations are <tt>insert()</tt>,
+ * <tt>extractMinimum()</tt> and <tt>decreasePriority()</tt>. While in this
+ * implementation <tt>insert()</tt> and <tt>extractMinimum()</tt> exhibit
+ * logarithmic behavior in the worst case, <tt>decreasePriority()</tt> is
+ * implemented naively, which yields linear performance in the worst case.
+ * 
+ * @param <T> the type of elements this queue stores
+ */ 
+public class MinPriorityQueue<T> {
+
+    /**
+     * Stores a datum and its priority.
+     *
+     * @param <T> the type of a datum.
+     */
+    protected static class Node<T> {
+        protected T element;
+        protected double priority;
+
+        protected Node( T element, double priority ){
+            this.element = element;
+            this.priority = priority;
+        }
+    }
+
+    protected Object[] elements;
+    protected int size;
+
+    /**
+     * Creates a new minimum priority queue, which is capable of storing at most
+     * <code>capacity</code> amount of nodes without extending the queue.
+     *
+     * @param capacity initial capacity.
+     */
+    public MinPriorityQueue( int capacity ){
+        elements = new Object[ capacity ];
+    }
+
+    /**
+     * Inserts an element into this queue. Runs in O(log n) time in the worst
+     * case.
+     *
+     * @param element the element to insert into this queue
+     * @param priority the priority of the element inserted
+     *
+     * @return <code>true</code> if insertion took place, <code>false</code>
+     * otherwise.
+     */
+    public boolean insert( T element, double priority ){
+        if( Double.isNaN( priority ) )
+            return false;
+
+        if( size == elements.length )
+        {
+            int capacity = (size * 3) / 2;
+            Object[] array = new Object[ capacity ];
+            System.arraycopy( elements, 0, array, 0, size );
+            elements = array;
+        }
+
+        int index = size;
+        Node<T> node = new Node<T>( element, priority );
+
+        while( index > 0 )
+        {
+            int parent = (index - 1) >>> 1;
+            Object p = elements[parent];
+
+            if( priority >= ((Node<T>) p).priority )
+                break;
+
+            elements[index] = p;
+            index = parent;
+        }
+
+        elements[index] = node;
+        size++;
+        return true;
+    }
+
+    /**
+     * Returns the element with the highest priority (the least priority value).
+     *
+     * @return the minimum element of this queue.
+     */
+    public T minimum(){
+        if( size == 0 )
+            throw new NoSuchElementException( "Reading from an empty heap." );
+
+        return ((Node<T>) elements[0]).element;
+    }
+
+    /**
+     * Extracts and returns the element of this priority queue with the least
+     * priority value (thus, with the highest priority). Runs in O(log n) time
+     * in the worst case.
+     *
+     * @return the minimum element of this queue.
+     */
+    public T extractMinimum(){
+        if( size == 0 )
+            throw new NoSuchElementException( "Heap underflow" );
+
+        T element = ((Node<T>) elements[0]).element;
+        Node<T> node = (Node<T>) elements[--size];
+
+        int minIndex = 0;
+        int nodeIndex = 0;
+        int leftChildIndex = 1;
+        int rightChildIndex = 2;
+
+        for(;;)
+        {
+            if(
+                leftChildIndex < size &&
+                ((Node<T>) elements[leftChildIndex]).priority <
+                node.priority
+            )
+                minIndex = leftChildIndex;
+
+            if(
+                rightChildIndex < size &&
+                ((Node<T>) elements[rightChildIndex]).priority <
+                node.priority &&
+                ((Node<T>) elements[rightChildIndex]).priority <
+                ((Node<T>) elements[leftChildIndex]).priority
+            )
+                minIndex = rightChildIndex;
+
+            if( minIndex == nodeIndex )
+            {
+                elements[nodeIndex] = node;
+                return element;
+            }
+            else
+            {
+                elements[nodeIndex] = elements[minIndex];
+
+                nodeIndex = minIndex;
+                leftChildIndex = (nodeIndex << 1) + 1;
+                rightChildIndex = leftChildIndex + 1;
+            }
+        }
+    }
+
+    /**
+     * Decreases the priority of the specified element. This is the naive
+     * implementation, which runs in O(n) time.
+     *
+     * @see com.mureakuha.util.MinPriorityQueueEx
+     * @param element the element, the priority of which to decrease
+     * @param newPriority the new priority for the specified element
+     * @return <code>true</code> if decreasing of priority took place,
+     * <code>false</code> otherwise.
+     */
+    public boolean decreasePriority( T element, double newPriority ){
+        int index = -1;
+
+        for( int i = 0; i < size; i++ )
+            if(
+                ((Node<T>) elements[i]).element == element ||
+                ((Node<T>) elements[i]).element.equals( element )
+            )
+            {
+                index = i;
+                break;
+            }
+
+        if( index < 0 || index >= size )
+            return false;
+
+        if( Double.isNaN( newPriority ) )
+            return false;
+
+        if( ((Node<T>) elements[index]).priority <= newPriority )
+            return false;
+
+        ((Node<T>) elements[index]).priority = newPriority;
+
+        Node<T> node = (Node<T>) elements[index];
+        int parentIndex = (index - 1) >> 1;
+
+        for(;;)
+        {
+            if(
+                parentIndex >= 0 &&
+                ((Node<T>) elements[parentIndex]).priority >
+                node.priority
+            )
+            {
+                elements[index] = elements[parentIndex];
+
+                index = parentIndex;
+                parentIndex = (index - 1) >> 1;
+            }
+            else
+            {
+                elements[index] = node;
+                return true;
+            }
+        }
+    }
+
+    /**
+     * Returns the number of elements stored in this queue.
+     *
+     * @return the number of elements stored in this queue.
+     */
+    public int size(){
+        return size;
+    }
+}
+
+////  /////////////////////////
+ // MinPriorityQueueEx.java //
+/////////////////////////  ////
+
+package com.mureakuha.util;
+
+import java.util.HashMap;
+import java.util.NoSuchElementException;
+
+/**
+ * This class models a minimum priority queue by means of a minimum binary heap.
+ * Essentially, it extends <tt>com.mureakuha.util.MinPriorityQueue</tt>, and
+ * indirectly maps each stored element to the index at which the element is
+ * stored in the queue. Such arrangement allows us to restrict the running time
+ * of <tt>decreasePriority</tt> to O(log n).
+ *
+ * The 3 most important operations are <tt>insert()</tt>,
+ * <tt>extractMinimum()</tt> and <tt>decreasePriority()</tt>. In this
+ * implementation, all three procedures run in logarithmic time in the worst
+ * case.
+ *
+ * @param <T> the type of elements this queue stores
+ */
+public class MinPriorityQueueEx<T> extends MinPriorityQueue<T> {
+    protected HashMap<T, NodeEx<T>> map;
+    protected final float LOAD_FACTOR = 0.8f;
+
+    /**
+     * Stores a datum and its priority along the index at which this node is
+     * stored in the queue.
+     *
+     * @param <T> the type of a datum.
+     */
+    protected class NodeEx<T> extends MinPriorityQueue.Node<T> {
+        protected int index;
+
+        protected NodeEx( T element, double priority ){
+            super( element, priority );
+        }
+    }
+
+    /**
+     * Creates a new minimum priority queue, which is capable of storing at most
+     * <code>capacity</code> amount of nodes without extending the queue.
+     *
+     * @param capacity initial capacity.
+     */
+    public MinPriorityQueueEx( int capacity ){
+        super( capacity );
+        map = new HashMap<T, NodeEx<T>>(
+                (int) Math.ceil( capacity / LOAD_FACTOR ),
+                LOAD_FACTOR
+                );
+    }
+
+    /**
+     * Inserts an element into this queue. Runs in O(log n) time in the worst
+     * case.
+     *
+     * @param element the element to insert into this queue
+     * @param priority the priority of the element inserted
+     *
+     * @return <code>true</code> if insertion took place, <code>false</code>
+     * otherwise.
+     */
+    public boolean insert( T element, double priority ){
+        if( Double.isNaN( priority ) )
+            return false;
+
+        if( size == elements.length )
+        {
+            int capacity = (size * 3) / 2;
+            Object[] array = new Object[ capacity ];
+            System.arraycopy( elements, 0, array, 0, size );
+            elements = array;
+        }
+
+        int index = size;
+        NodeEx<T> node = new NodeEx<T>( element, priority );
+
+        while( index > 0 )
+        {
+            int parent = (index - 1) >>> 1;
+            NodeEx<T> p = (NodeEx<T>) elements[parent];
+
+            if( priority >= p.priority )
+                break;
+
+            elements[index] = p;
+            p.index = index;
+            index = parent;
+        }
+
+        elements[index] = node;
+        node.index = index;
+        map.put( element, node );
+        size++;
+        return true;
+    }
+
+    /**
+     * Returns the element with the highest priority (the least priority value).
+     *
+     * @return the minimum element of this queue.
+     */
+    public T minimum(){
+        if( size == 0 )
+            throw new NoSuchElementException( "Reading from an empty heap." );
+
+        return ((NodeEx<T>) elements[0]).element;
+    }
+
+    /**
+     * Extracts and returns the element of this priority queue with the least
+     * priority value (thus, with the highest priority). Runs in O(log n) time
+     * in the worst case.
+     *
+     * @return the minimum element of this queue.
+     */
+    public T extractMinimum(){
+        if( size == 0 )
+            throw new NoSuchElementException( "Heap underflow." );
+
+        T element = ((NodeEx<T>) elements[0]).element;
+        map.remove( element );
+        NodeEx<T> node = (NodeEx<T>) elements[--size];
+
+        int minIndex = 0;
+        int nodeIndex = 0;
+        int leftChildIndex = 1;
+        int rightChildIndex = 2;
+
+        for(;;)
+        {
+            if(
+                leftChildIndex < size &&
+                ((NodeEx<T>) elements[leftChildIndex]).priority <
+                node.priority
+            )
+                minIndex = leftChildIndex;
+
+            if(
+                rightChildIndex < size &&
+                ((NodeEx<T>) elements[rightChildIndex]).priority <
+                node.priority &&
+                ((NodeEx<T>) elements[rightChildIndex]).priority <
+                ((NodeEx<T>) elements[leftChildIndex]).priority
+            )
+                minIndex = rightChildIndex;
+
+            if( minIndex == nodeIndex )
+            {
+                elements[nodeIndex] = node;
+                node.index = nodeIndex;
+                return element;
+            }
+            else
+            {
+                elements[nodeIndex] = elements[minIndex];
+                ((NodeEx<T>) elements[nodeIndex]).index = nodeIndex;
+
+                nodeIndex = minIndex;
+                leftChildIndex = (nodeIndex << 1) + 1;
+                rightChildIndex = leftChildIndex + 1;
+            }
+        }
+    }
+
+
+    /**
+     * Decreases the priority of the specified element. This is the more
+     * advanced implementation, which runs in O(log n) time in the worst case
+     * unlike <tt>com.mureakuha.util.MinPriorityQueue.decreasePriority</tt>.
+     *
+     * @see com.mureakuha.util.MinPriorityQueue
+     * @param element the element, the priority of which to decrease
+     * @param newPriority the new priority for the specified element
+     * @return <code>true</code> if decreasing of priority took place,
+     * <code>false</code> otherwise.
+     */
+    public boolean decreasePriority( T element, double newPriority ){
+        if( !map.containsKey( element ) )
+            return false;
+
+        if( Double.isNaN( newPriority ) )
+            return false;
+
+        int index = map.get( element ).index;
+
+        if( index < 0 || index >= size )
+            return false;
+
+        if( ((NodeEx<T>) elements[index]).priority <= newPriority )
+            return false;
+
+        NodeEx<T> node = (NodeEx<T>) elements[index];
+        node.priority = newPriority;
+
+        int parentIndex = (index - 1) >> 1;
+
+        for(;;)
+        {
+            if(
+                parentIndex >= 0 &&
+                ((NodeEx<T>) elements[parentIndex]).priority >
+                node.priority
+            )
+            {
+                elements[index] = elements[parentIndex];
+                ((NodeEx<T>) elements[index]).index = index;
+
+                index = parentIndex;
+                parentIndex = (index - 1) >> 1;
+            }
+            else
+            {
+                elements[index] = node;
+                node.index = index;
+                return true;
+            }
+        }
+    }
+
+    /**
+     * Returns the number of elements stored in this queue.
+     *
+     * @return the number of elements stored in this queue.
+     */
+    public int size(){
+        return size;
+    }
+}
+
+////  ///////////
+ // Node.java //
+///////////  ////
+
+package com.mureakuha.util;
+
+import java.util.HashMap;
+
+/**
+ * This class provides a type for associating satellite data with a graph node.
+ * In essence, objects of Node in conjuction with the objects of type
+ * Weight model a directed weighted graph.
+ *
+ * @param <T> the type of nodes' satellite data
+ * @param <E> the type of edges' satellite data
+ */
+public class Node<T, E> {
+    protected T data;
+    protected Node<T, E> parent;
+    protected double distance;
+
+    // Adjacency lists for incoming and outgoing edges, respectively.
+    protected HashMap<Node<T, E>, Weight<E>> in;
+    protected HashMap<Node<T, E>, Weight<E>> out;
+
+    /**
+     * Constructs a new Node with the specified satellite data.
+     *
+     * @param data satellite data to set for this Node.
+     */
+    public Node( T data ){
+        this.data = data;
+        in = new HashMap<Node<T, E>, Weight<E>>();
+        out = new HashMap<Node<T, E>, Weight<E>>();
+    }
+
+    /**
+     * Constructs a new Node with no satellite data.
+     */
+    public Node(){
+        this( null );
+    }
+
+    /**
+     * Gets the satellite data associated with this Node.
+     *
+     * @return the satellite data associated with this Node.
+     */
+    public T getData(){
+        return data;
+    }
+
+    /**
+     * Sets the specified satellite data for this Node.
+     *
+     * @param data the satellite data to set for this Node.
+     */
+    public void setData( T data ){
+        this.data = data;
+    }
+
+    /**
+     * Gets the predecessor of this node in the precomputed shortest path tree.
+     *
+     * @return the predecessor Node in the shortest path tree.
+     */
+    public Node<T, E> getParent(){
+        return parent;
+    }
+
+    /**
+     * Returns the distance from the source Node to this Node along the shortest
+     * path.
+     *
+     * @return the shortest distance from the source Node to this Node.
+     */
+    public double getDistance(){
+        return distance;
+    }
+
+    /**
+     * Creates a directed edge from this Node to the <code>other</code> and sets
+     * its weight to <code>weight</code>.
+     *
+     * @param other the node the new edge points to
+     * @param weight the weight of the created edge
+     * @return <code>true</code> if edge creation took place, <code>false</code>
+     * otherwise.
+     */
+    public boolean createEdge( Node<T, E> other, Weight<E> weight ){
+        if( Double.isNaN( weight.getWeight() ) || other == null )
+            return false;
+
+        out.put( other, weight );
+        other.in.put( this, weight );
+        return true;
+    }
+
+    /**
+     * Removes the edge from this Node to <code>other</code>.
+     *
+     * @param other Node the edge points to
+     * @return <code>true</code> if edge removal took place, <code>false</code>
+     * otherwise.
+     */
+    public boolean removeEdge( Node<T, E> other ){
+        if( other == null )
+            return false;
+
+        boolean has = false;
+
+        if( out.containsKey( other ) )
+        {
+            has = true;
+            out.remove( other );
+        }
+
+        if( other.in.containsKey( this ) )
+        {
+            has = true;
+            other.in.remove( this );
+        }
+
+        return has;
+    }
+
+    /**
+     * Retrieves the directed edge (this, other) in the case it exists.
+     *
+     * @param other the end-point node of the edge
+     * @return the edge (this, other) if it exists, <code>null</code> otherwise.
+     */
+    public Weight<E> getEdge( Node<T, E> other ){
+        if( out.containsKey( other ) )
+            return out.get( other );
+
+        return null;
+    }
+
+    /**
+     * Checks whether the directed edge (this, other) exists.
+     *
+     * @param other the end-point node of the edge
+     * @return <code>true</code> if the edge exists, <code>false</code>
+     * otherwise.
+     */
+    public boolean pointsTo( Node<T, E> other ){
+        return out.containsKey( other );
+    }
+
+    /**
+     * Retrieves the nodes, which have directed edges pointing to this Node.
+     *
+     * @return the nodes with the edges pointing to this node.
+     */
+    public Object[] getIncomingNeighbors(){
+        return in.keySet().toArray();
+    }
+
+    /**
+     * Retrieves the nodes v_i for which edges (this, v_i) exist.
+     *
+     * @return the nodes this Node "points to".
+     */
+    public Object[] getOutgoingNeighbors(){
+        return out.keySet().toArray();
+    }
+}
+
+////  /////////////
+ // Weight.java //
+/////////////  ////
+
+package com.mureakuha.util;
+
+/**
+ * An abstract class every edge type implementation should implement in order to
+ * partially qualify for Dijkstra's algorithm in ShortestPathSolver.
+ *
+ * @param <T> the type of edges' satellite data
+ * @see com.mureakuha.util.ShortestPathSolver#DijkstrasAlgorithm
+ */
+public abstract class Weight<T> {
+    protected T data;
+
+    /**
+     * Gets the data associated with this edge.
+     *
+     * @return the satellite data associated with this edge.
+     */
+    public T getData(){
+        return data;
+    }
+
+    /**
+     * Sets the data associated with this edge.
+     */
+    public void setData( T data ){
+        this.data = data;
+    }
+
+    /**
+     * Implementation should return the weight (or, in another terms, cost) of
+     * this edge.
+     *
+     * @return the edge weight.
+     */
+    public abstract double getWeight();
+}
+
+////  ///////////
+ // Main.java //
+///////////  ////
+
+import com.mureakuha.util.Node;
+import com.mureakuha.util.Weight;
+import com.mureakuha.util.ShortestPathSolver;
+
+import java.awt.Point;
+
+import java.util.Stack;
+import java.util.HashMap;
+
+public class Main {
+
+    public static void main( String[] args ){
+        System.out.println( "--- SMALL DEMO ---" );
+        smallDemo();
+
+        System.out.println( "\n--- LARGE DEMO ---" );
+        largeDemo();
+    }
+
+    static void smallDemo(){
+        String[] city = {
+            "Helsinki",
+            "Rovaniemi",
+            "Turku",
+            "Tampere",
+            "Kouvola",
+            "Vantaa"
+        };
+
+        Node[] graph = new Node[ city.length ];
+        HashMap<String, Node<String, String>> map =
+                new HashMap<String, Node<String, String>>( city.length );
+
+        for( int i = 0; i < city.length; i++ )
+            map.put( city[i], graph[i] = new Node<String, String>( city[i] ) );
+
+        // Each AddEdge - invocation creates two directed edges between two
+        // cities, each edge pointing in its own direction. (You can think of it
+        // as if AddEdge creates an undirected edge between two cities.)
+        AddEdge( "Helsinki",  "Vantaa",    "bussi",     15.0,  map );
+        AddEdge( "Helsinki",  "Tampere",   "bussi",     180.0, map );
+        AddEdge( "Helsinki",  "Turku",     "juna",      120.0, map );
+        AddEdge( "Helsinki",  "Kouvola",   "juna",      95.0,  map );
+        AddEdge( "Tampere",   "Turku",     "bussi",     150.0, map );
+        AddEdge( "Vantaa",    "Rovaniemi", "lentokone", 60.0,  map );
+        AddEdge( "Rovaniemi", "Kouvola",   "auto",      780.0, map );
+        AddEdge( "Rovaniemi", "Tampere",   "juna",      450.0, map );
+        AddEdge( "Rovaniemi", "Turku",     "juna",      550.0, map );
+
+        // Compute the shortest path tree using Tampere as the source.
+        ShortestPathSolver.DijkstrasAlgorithm(
+                graph,
+                map.get( "Tampere" ),
+                true
+                );
+
+        // Get the shortest path from Tampere (the source node) to Rovaniemi.
+        Stack<Node<String, String>> path = ShortestPathSolver.GetPathTo(
+                map.get( "Rovaniemi" )
+                );
+
+        // Print the path and its cost estimate.
+        double length = PrintPath( path );
+        System.out.println( "Total time cost: " + length + " minutes." );
+    }
+
+    // Demo on a somewhat large grid graph of n * n = 200 * 200 = 40000 nodes.
+    static void largeDemo(){
+        int n = 200;
+        Node[] graph = new Node[ n * n ];
+
+        System.out.println( "Total amount of nodes in the graph: " + (n * n) );
+
+        Point p = new Point();
+
+        for( int y = 0; y < n; y++ )
+        {
+            p.y = y;
+
+            for( int x = 0; x < n; x++ )
+            {
+                p.x = x;
+                graph[ n * y + x ] = new Node<String,String>(
+                        "node" + p.toString().substring( 14 )
+                        );
+            }
+        }
+
+        // The weight of the diagonal edges.
+        final double SQRT2 = Math.sqrt( 2.0 );
+
+        // Construct a grid graph of the following topology:
+        //
+        // (0, 0) -- (1, 0) -- (2, 0) -- ... -- (199, 0)
+        //   |   \  /  |   \  /  |          \  /    |
+        //   |    \/   |    \/   |           \/     |
+        //   |    /\   |    /\   |           /\     |
+        //   |   /  \  |   /  \  |          /  \    |
+        // (0, 1) -- (1, 1) -- (2, 1) -- ... -- (199, 1)
+        //   |   \  /  |   \  /  |          \  /    |
+        //   |    \/   |    \/   |           \/     |
+        //   |    /\   |    /\   |           /\     |
+        //   |   /  \  |   /  \  |          /  \    |
+        // (0, 2) -- (1, 2) -- (2, 2) -- ... -- (199, 2)
+        //   |         |         |   \              |
+        //   :         :         :    .             :
+        //   :         :         :     .            :
+        //   |         |         |                  |
+        //  ...       ...       ...                ...
+        //   |   \  /  |   \  /  |                  |
+        //   |    \/   |    \/   |           .      |
+        //   |    /\   |    /\   |            .     |
+        //   |   /  \  |   /  \  |             \    |
+        // (0,199)-- (1,199)-- (2,199)-- ... -- (199,199),
+        //
+        // where the weight of the diagonal edges equals to the square root of 2
+        // and the weight of horizontal and vertical edges equals to 1.
+
+        // Create horizontal "-" - edges.
+        for( int y = 0; y < n; y++ )
+            for( int x = 1; x < n; x++ )
+            {
+                Weight<String> w = new TimeCost( "horizontal edge", 1.0 );
+                graph[ n * y + x ].createEdge( graph[ n * y + x - 1 ], w );
+                graph[ n * y + x - 1 ].createEdge( graph[ n * y + x ], w );
+
+            }
+
+        // Create vertical "|" - edges.
+        for( int x = 0; x < n; x++ )
+            for( int y = 1; y < n; y++ )
+            {
+                Weight<String> w = new TimeCost( "vertical edge", 1.0 );
+                graph[ n * y + x ].createEdge( graph[ n * (y - 1) + x ], w );
+                graph[ n * (y - 1) + x ].createEdge( graph[ n * y + x ], w );
+
+            }
+
+        // Create diagonal "/" - edges.
+        for( int y = 0; y < n - 1; y++ )
+            for( int x = 1; x < n; x++ )
+            {
+                Weight<String> w = new TimeCost( "diagonal / - edge", SQRT2 );
+                graph[ n*y + x ].createEdge( graph[ n * (y + 1) + x - 1 ], w );
+                graph[ n * (y + 1) + x - 1 ].createEdge( graph[ n*y + x ], w );
+            }
+
+        // Create diagonal "\" - edges.
+        for( int y = 0; y < n - 1; y++ )
+            for( int x = 0; x < n - 1; x++ )
+            {
+                Weight<String> w = new TimeCost( "diagonal \\ - edge", SQRT2 );
+                graph[ n*y + x ].createEdge( graph[ n * (y + 1) + x + 1 ], w );
+                graph[ n * (y + 1) + x + 1 ].createEdge( graph[ n*y + x ], w );
+            }
+
+        System.out.println(
+                "---\n" +
+                "Running Dijkstra's algorithm against a heap with " +
+                "O(|V|) operation for decreasing priority..."
+                );
+
+        long ta = System.currentTimeMillis();
+        ShortestPathSolver.DijkstrasAlgorithm( graph, graph[0], false );
+        long tb = System.currentTimeMillis();
+
+        System.out.println( "Time: " + (tb - ta) + " ms." );
+
+        // The intent is that our shortest path from (0, 0) to (199, 99) goes
+        // through 99 diagonal \ - edges and 100 horizontal edges. In such a
+        // case, the shortest distance from (0, 0) to (199, 99) equals
+        // 1.414.. * 99 + 1.0 * 100 = 240.007.. .
+        System.out.println(
+                "Distance from " + graph[0].getData() + " to " +
+                graph[ n * 99 + 199 ].getData() + ": " +
+                graph[ n * 99 + 199 ].getDistance()
+                );
+
+        System.out.println(
+                "---\n" +
+                "Running Dijkstra's algorithm against a heap with " +
+                "O(log |V|) operation for decreasing priority..."
+                );
+
+        ta = System.currentTimeMillis();
+        ShortestPathSolver.DijkstrasAlgorithm( graph, graph[0], true );
+        tb = System.currentTimeMillis();
+
+        System.out.println( "Time: " + (tb - ta) + " ms." );
+
+        System.out.println(
+                "Distance from " + graph[0].getData() + " to " +
+                graph[ n * 99 + 199 ].getData() + ": " +
+                graph[ n * 99 + 199 ].getDistance()
+                );
+
+        Stack<Node<String, String>> path = ShortestPathSolver.GetPathTo(
+                graph[ n * 99 + 199 ]
+                );
+
+        // Set to true if wanna see the path. (Total 199 transitions.)
+        // Aseta true:ksi jos haluat lyhimmän polun tulostuvan. (Yhteensä 199
+        // siirtoa kaareja pitkin.)
+        if( false )
+        {
+            System.out.println(
+                    "---\n" +
+                    "And the path from " + graph[0].getData() + " to " +
+                    graph[ n * 99 + 199].getData() + " is:"
+                    );
+
+            PrintPath( path );
+        }
+    }
+
+    // Merely an utility procedure to make things more readable...
+    static void AddEdge(
+            String a,
+            String b,
+            String edgeData,
+            double timeCost,
+            HashMap<String, Node<String, String>> map
+            )
+    {
+        Weight<String> w = new TimeCost( edgeData, timeCost );
+        map.get( a ).createEdge( map.get( b ), w );
+        map.get( b ).createEdge( map.get( a ), w );
+    }
+
+    // Prints the edge transitions needed in order to traverse a shortest path.
+    static double PrintPath( Stack<Node<String, String>> path ){
+        Node<String, String> a = path.pop();
+        Node<String, String> b = null;
+        int transition = 0;
+        double length = .0;
+
+        while( !path.empty() )
+        {
+            b = path.pop();
+
+            System.out.println(
+                    "Transition " + (++transition) + ": from " +
+                    a.getData() + " to " + b.getData() + " using \"" +
+                    a.getEdge( b ).getData() + "\" in " +
+                    a.getEdge( b ).getWeight() + " minutes."
+                    );
+
+            length += a.getEdge( b ).getWeight();
+
+            a = b;
+        }
+
+        return length;
+    }
+
+    // Our weightable edge class in which weights are represented by the time
+    // cost associated with, say, the route between two adjacent nodes.
+    // --
+    // Meidän kaariluokka, jonka painona on aikakustannus kahden naapurisolmun
+    // välillä.
+    static class TimeCost extends Weight<String> {
+        final double time;
+
+        TimeCost( String routeType, double time ){
+            this.time = time;
+            super.setData( routeType );
+        }
+
+        public double getWeight(){
+            return time;
+        }
+    }
+}
